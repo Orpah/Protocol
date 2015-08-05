@@ -30,7 +30,7 @@ AMBER Alert is used in United States to find an abducted child at risk for serio
 
 ## ORPAH Wi-Fi Router
 ### Why Wi-Fi?
-Wi-Fi, Bluetooth and ZigBee are wireless protocols we can choose, among them, Wi-Fi is the most possible device to connect internet and send ORPAH signals to an ORPAH server, so we make ORPAH based on Wi-Fi.
+Wi-Fi, Bluetooth and ZigBee are wireless protocols we can choose, among them, Wi-Fi is the most possible protocol to connect internet and send ORPAH signals to an ORPAH server, so we make ORPAH based on Wi-Fi.
 
 ### Why Wi-Fi 802.11b?
 Wi-Fi 802.11b has the lowest data rate(1Mb/s), so it can cover a large range outdoor with the lowest power consumption. It's not supported by Wi-Fi Direct, this makes us easy to extend Wi-Fi 802.11b to support Wi-Fi ORPAH.
@@ -54,31 +54,33 @@ ORPAH APP can be extended to support more functions than battery-free device, su
 
 
 ## References
-### Trafficking of children
+##### Trafficking of children
 [Trafficking of children on WikiPedia](https://en.wikipedia.org/wiki/Trafficking_of_children)
 
-### Alzheimer's disease
+##### Alzheimer's disease
 [Alzheimer's disease on WikiPedia](https://en.wikipedia.org/wiki/Alzheimer%27s_disease)
 
-### Mobile phone tracking
+##### Mobile phone tracking
 [Mobile phone tracking on WikiPedia](https://en.wikipedia.org/wiki/Mobile_phone_tracking)
 
-### AMBER Alert
+##### AMBER Alert
 [AMBER Alert Official Site](http://www.amberalert.gov/)
+
 [AMBER Alert on WikiPedia](https://en.wikipedia.org/wiki/AMBER_Alert)
 
-### Ambient Backscatter
+##### Ambient Backscatter
 [Ambient Backscatter Official Site](http://abc.cs.washington.edu/)
+
 [Ambient Backscatter on WikiPedia](https://en.wikipedia.org/wiki/Ambient_backscatter)
 
-### Wi-Fi 802.11b
+##### Wi-Fi 802.11b
 [Wi-Fi 802.11b on WikiPedia](https://en.wikipedia.org/wiki/IEEE_802.11#802.11b)
 
-### Wi-Fi Direct
+##### Wi-Fi Direct
 [Wi-Fi Direct on WikiPedia](https://en.wikipedia.org/wiki/Wi-Fi_Direct)
 
-### Bluetooth
+##### Bluetooth
 [Bluetooth on WikiPedia](https://en.wikipedia.org/wiki/Bluetooth)
 
-### ZigBee
+##### ZigBee
 [ZigBee on WikiPedia](https://en.wikipedia.org/wiki/ZigBee)
