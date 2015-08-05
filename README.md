@@ -21,11 +21,8 @@ AMBER Alert is used in United States to find an abducted child at risk for serio
 ### ORPAH Network Structure
 <img src="https://raw.github.com/orpah/protocol/master/docs/images/orpah_network_structure.png" width=600"/>
 
-### ORPAH Message Flow between a client and a Wi-Fi router
-<img src="https://raw.github.com/orpah/protocol/master/docs/images/orpah_flow_client_router.png" width=600"/>
-
-### ORPAH Message Flow between a Wi-Fi router and an ORPAH server
-<img src="https://raw.github.com/orpah/protocol/master/docs/images/orpah_flow_router_server.png" width=600"/>
+### ORPAH Message Flow
+<img src="https://raw.github.com/orpah/protocol/master/docs/images/orpah_message_flow.png" width=600"/>
 
 
 ## ORPAH Wi-Fi Router
