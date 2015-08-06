@@ -1,3 +1,4 @@
+Other Language：[中文](https://github.com/Orpah/Protocol/blob/master/README_zh.md)
 ORPAH Protocol
 ==============
 
