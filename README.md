@@ -1,6 +1,6 @@
-Other Language：[中文](https://github.com/Orpah/Protocol/blob/master/README_zh.md)
 ORPAH Protocol
-==============
+====
+Other Language：[中文](README_zh.md)
 
 The ORPAH protocol is a simple Wi-Fi 802.11b based protocol developed exclusively for ORPAH.
 
@@ -20,10 +20,10 @@ AMBER Alert is used in United States to find an abducted child at risk for serio
 
 ## ORPAH Message Flow
 ### ORPAH Network Structure
-<img src="https://raw.github.com/orpah/protocol/master/docs/images/orpah_network_structure.png" width=600"/>
+![ORPAH Network Structure](./docs/images/orpah_network_structure.png)
 
 ### ORPAH Message Flow
-<img src="https://raw.github.com/orpah/protocol/master/docs/images/orpah_message_flow.png" width=600"/>
+![ORPAH Message Flow](./docs/images/orpah_message_flow.png)
 
 
 ## ORPAH Wi-Fi Router
@@ -42,10 +42,10 @@ ORPAH clients can be an APP on a mobile phone or a battery-free device.
 
 ### Battery-Free Device
 #### Human-Motion-Powered Device
-<img src="https://raw.github.com/orpah/protocol/master/docs/images/human_motion_powered_device.png" width=600"/>
+![Human-Motion-Powered Device](./docs/images/human_motion_powered_device.png)
 
 #### Radio-Wave-Powered Device
-<img src="https://raw.github.com/orpah/protocol/master/docs/images/radio_wave_powered_device.png" width=600"/>
+![Radio-Wave-Powered Device](./docs/images/radio_wave_powered_device.png)
 
 ### ORPAH APP
 ORPAH APP can be extended to support more functions than battery-free device, such as opening mobile phone's GPS and sending GPS data to ORPAH server.
