@@ -1,7 +1,7 @@
-其它语言：[En](https://github.com/Orpah/Protocol/blob/master/README.md)
-奥帕(ORPAH)协议
-==============
+其它语言：[En](README.md)
 
+奥帕(ORPAH)协议
+====
 
 奥帕协议是一个简单的、基于Wi-Fi 802.11b的协议，仅限用于奥帕系统使用。
 
@@ -21,10 +21,10 @@
 
 ## 奥帕信息流
 ### 奥帕网络结构图
-<img src="https://raw.github.com/orpah/protocol/master/docs/images/orpah_network_structure.png" width=600"/>
+![奥帕网络结构图](./docs/images/orpah_network_structure.png)
 
 ### 奥帕信息流流程图
-<img src="https://raw.github.com/orpah/protocol/master/docs/images/orpah_message_flow_zh.png" width=600"/>
+![奥帕信息流流程图](./docs/images/orpah_message_flow_zh.png)
 
 
 ## 奥帕Wi-Fi路由器
@@ -43,11 +43,12 @@ Wi-Fi奥帕是Wi-Fi路由器操作系统的软扩展，以便允许奥帕终端�
 
 ### 无电池设备
 #### 人动电能设备
-<img src="https://raw.github.com/orpah/protocol/master/docs/images/human_motion_powered_device_zh.png" width=600"/>
+![人动电能设备](./docs/images/human_motion_powered_device_zh.png)
+
 
 #### 无线电波电能设备
 无线电波电能设备参考华盛顿大学的Ambient Backscatter。
-<img src="https://raw.github.com/orpah/protocol/master/docs/images/radio_wave_powered_device_zh.png" width=600"/>
+![无线电波电能设备](./docs/images/radio_wave_powered_device_zh.png)
 
 ### 奥帕APP
 奥帕APP可以比无电池设备有更多的功能，比如打开手机GPS并发送GPS数据给奥帕服务器。
