@@ -162,8 +162,9 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
   首报」时主动推——若 Router 重启（缓存清空）或此前从未接触 Server、且期间无变更事件，
   将一直是空表 → 对已 mark 的 sn 误答 NOT-TRACKED。补：Router 可发 **`ORPAH-LOST-TABLE-REQ`**
   主动拉取，Server 记入见过集（此后变更也推）并回当前全量表。Router 触发时机 = **启动即拉
-  一次**（重启追平；Server 未就绪则超时忽略）+ **REQ-CONNECT 缓存未命中时同步拉取**（首问
-  即用权威值回答，不再等 Server 变更/首报推送）。
+  一次**（重启追平；Server 未就绪则超时忽略）+ **尚未同步时（重启后 / 启动拉表失败）的首个
+  REQ-CONNECT 再拉一次**（此后每次变更 Server 都会推全量表，无需每条 REQ 都拉——避免空表下
+  的重复拉取洪泛）。
 - **跟踪回执**：REPORT → Server 查库 → TRACKING-STATUS（TRACKED / NOT-TRACKED）经 Router
   下行回 Client。
 - **多 Router 去重 / 最新位置（F-04/F-07 定稿 2026-09-10，L3 落地）**：Client 同一时刻只
@@ -192,8 +193,9 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
   （2×AP+2×Router 共用 1 Server）验证 F-04/F-07（(sn,seq) 去重/最新 Router/回执归属）
   + F-01（SN 中英数字校验）；`demo_l3.py` 7 项检查全 PASS。
 - **L3b（Router 主动拉表，✅ 已完成 2026-09-10）**：新增 `ORPAH-LOST-TABLE-REQ`；Router
-  启动/REQ-CONNECT 缓存未命中即同步拉取（首问即权威），Server 记入见过集并回全量表；
-  `demo_l4.py` 4 项检查全 PASS。
+  启动即拉、未同步（重启后）时首个 REQ-CONNECT 再拉一次（避免每条 REQ 都拉），Server 记入
+  见过集并回全量表；`demo_l4.py` 4 项检查全 PASS。UI「走失表」卡片加「服务器发布记录」显示
+  LOST-TABLE 下发（mark/untrack 发布；逐条 TRACKING-STATUS 回执属响应、不计不展示）。
 - **L2.5 / 真机最终形态（下一步）**：固件代次结论（§3）已解锁最终链路——Router=TH-RJ45 升
   **V2.4-WNB**、Client=TX-AH **V2.4-FMAC**，数据面走 host SPI / RJ45 网口（orpah host 数据口
   语义已对齐 SPI MACBUS，可平滑替换底层）。
