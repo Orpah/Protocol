@@ -1,11 +1,11 @@
 # ORPAH-over-HaLow 协议规格（草稿 → L1/L2/L3 实测回填）
 
-- 状态：**v0.3**（2026-09-10）· L1/L2 已在 `halow-demo/simulator/orpah` 实现并验收
+- 状态：**v0.4**（2026-09-10）· L1/L2 已在 `halow-demo/simulator/orpah` 实现并验收
   （`demo_l1.py` / `demo_l2.py` PASS）；**L3（多 Router 漫游/去重 + SN 字符集）已落地**
-  （`demo_l3.py` PASS，F-01/F-04/F-07 定稿，见 §5/§7/§9/§10）；报文字段/走失表流程按
-  实测回填（§5/§6/§7）。
+  （`demo_l3.py` PASS，F-01/F-04/F-07 定稿）；**L3b（Router 主动拉取 LOST-TABLE）已落地**
+  （`demo_l4.py` PASS，F-03 补充，见 §5/§7/§9/§10）；报文字段/走失表流程按实测回填（§5/§6/§7）。
 - 文档负责人：shijh（Orpah）
-- 关联：`halow-demo`（L1/L2/L3 原型与测试台，成熟后抽离）；泰芯 TX-AH / TH-RJ45（Phase1 硬件）
+- 关联：`halow-demo`（L1/L2/L3/L3b 原型与测试台，成熟后抽离）；泰芯 TX-AH / TH-RJ45（Phase1 硬件）
 - 本文件是「可实现的 ORPAH-over-HaLow」规格：L0 骨架已按 L1/L2/L3 实测填充为可实现的
   报文定义（JSON + UDP 传输）；仍待决点见 §10 开放问题。
 
@@ -111,7 +111,8 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 ## 5. 报文集（L2 实测 schema，JSON 统一公共头）
 
 **公共头**：每个报文是单行 JSON，含 `v`(协议版本=1)、`type`、`ts`(unix 秒)；`sn`(客户端
-序列号，见 F-01) 除 LOST-TABLE 外均带。链路层封装 = 以太网帧(ethertype `0x88B5`) 经 HaLow
+序列号，见 F-01) 除 LOST-TABLE / LOST-TABLE-REQ（Router 级，无 sn）外均带。链路层封装 =
+以太网帧(ethertype `0x88B5`) 经 HaLow
 桥透传；Router↔Server 的 UDP 载荷 = 同一 JSON bytes（桥/网透传不改写）。
 
 | 方向 | 报文 | 含义 | 字段（L2 实测） |
@@ -122,6 +123,7 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 | S→R→C | `ORPAH-TRACKING-STATUS` | 跟踪状态回执 | v,type,sn,ts,status,msg? |
 | 任→任 | `ORPAH-ERROR` | 错误 | v,type,sn?,ts,code,msg? |
 | S→R | `ORPAH-LOST-TABLE` | 走失表下发/更新 | v,type,ts,entries:[{sn,tracked,note?}],version? |
+| R→S | `ORPAH-LOST-TABLE-REQ` | Router 主动拉取当前走失表（F-03/L3b） | v,type,ts |
 
 示例（REPORT）：`{"v":1,"type":"ORPAH-REPORT","sn":"ORPAH-0001","ts":1788961894,"rssi":-55,"seq":1}`
 
@@ -156,6 +158,12 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 - **下发机制（F-03 已落地）**：走失表变更（mark/untrack）→ Server 主动把**全量** LOST-TABLE
   推给所有见过（上报过）的 Router；Router 存本地缓存 `sn -> tracked`，在 REQ-CONNECT 阶段
   据此直接回 ACCESS-INFO.tracked，不必每次问 Server。过期/按 sn 子集下发待 F-03 后续细化。
+- **Router 主动拉取（F-03 补充，L3b 2026-09-10 落地）**：Server 只在「变更」或「新 Router
+  首报」时主动推——若 Router 重启（缓存清空）或此前从未接触 Server、且期间无变更事件，
+  将一直是空表 → 对已 mark 的 sn 误答 NOT-TRACKED。补：Router 可发 **`ORPAH-LOST-TABLE-REQ`**
+  主动拉取，Server 记入见过集（此后变更也推）并回当前全量表。Router 触发时机 = **启动即拉
+  一次**（重启追平；Server 未就绪则超时忽略）+ **REQ-CONNECT 缓存未命中时同步拉取**（首问
+  即用权威值回答，不再等 Server 变更/首报推送）。
 - **跟踪回执**：REPORT → Server 查库 → TRACKING-STATUS（TRACKED / NOT-TRACKED）经 Router
   下行回 Client。
 - **多 Router 去重 / 最新位置（F-04/F-07 定稿 2026-09-10，L3 落地）**：Client 同一时刻只
@@ -183,11 +191,14 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 - **L3（多 Router 选路/去重 + SN 字符集，✅ 已完成 2026-09-10）**：漫游式双 Router
   （2×AP+2×Router 共用 1 Server）验证 F-04/F-07（(sn,seq) 去重/最新 Router/回执归属）
   + F-01（SN 中英数字校验）；`demo_l3.py` 7 项检查全 PASS。
+- **L3b（Router 主动拉表，✅ 已完成 2026-09-10）**：新增 `ORPAH-LOST-TABLE-REQ`；Router
+  启动/REQ-CONNECT 缓存未命中即同步拉取（首问即权威），Server 记入见过集并回全量表；
+  `demo_l4.py` 4 项检查全 PASS。
 - **L2.5 / 真机最终形态（下一步）**：固件代次结论（§3）已解锁最终链路——Router=TH-RJ45 升
   **V2.4-WNB**、Client=TX-AH **V2.4-FMAC**，数据面走 host SPI / RJ45 网口（orpah host 数据口
   语义已对齐 SPI MACBUS，可平滑替换底层）。
-- **L3（真机前续，规划）**：免电池客户端(TX-AH+CH32V203)低功耗策略；Router 主动拉取
-  LOST-TABLE；F-05 防伪造/限频、F-06 隐私、F-08 RSSI 粗定位。
+- **L3（真机前续，规划）**：免电池客户端(TX-AH+CH32V203)低功耗策略；F-05 防伪造/限频、
+  F-06 隐私、F-08 RSSI 粗定位。
 
 ## 10. 开放问题清单
 
@@ -195,7 +206,7 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 |---|---|---|---|
 | F-01 | 身份标识：真实 IMEI15 vs 自定义 SN？ | §5 | **已定（2026-09-10）**：不用 IMEI15；SN=中/英/数字（可含 `-`），长度 1–32；Server 校验非法回 FORMAT-ERR（L3 落地） |
 | F-02 | 传输=UDP+JSON(A) vs 链路层小帧(B)？端口/长度？ | §6 | **已定 = A（UDP+JSON）**，Server 端口 19447 |
-| F-03 | 走失表如何下发/过期/撤销到 Router？ | §7 | 变更即全量下发（L2 已实现）；新 Router 首报追平（L3）；按子集/过期待细化 |
+| F-03 | 走失表如何下发/过期/撤销到 Router？ | §7 | 变更即全量下发（L2）+ 新 Router 首报追平（L3）+ **Router 主动拉取（启动/缓存未命中，L3b）**；按子集/过期待细化 |
 | F-04 | 多 Router 上报去重 / 最新位置策略？ | §7 | **已定（2026-09-10）**：(sn,seq) 去重 + 上报来源=当前 Router（最新位置优先）+ 新 Router 首报追平（L3 落地） |
 | F-05 | 防伪造/刷位置上报（签名/限频）？ | §8 | 待定 |
 | F-06 | 位置隐私与查询权限模型？ | §8 | 待定 |
