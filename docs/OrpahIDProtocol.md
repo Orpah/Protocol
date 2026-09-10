@@ -1,4 +1,4 @@
-# Orpah ID 协议规范 v1.15
+# Orpah ID 协议规范 v1.16
 
 > **Orpah ID**（*Orpah Identity*）是一个"无认证 Wi-Fi 寻人"协议：client（佩戴终端）向周围的 router（接入点）发送身份/位置信号，router 不要求 client 认证即可转发到 server，server 根据多个 router 的接收情况判定 client 大致位置。本协议即 *Orpah ID Protocol*。
 >
@@ -157,7 +157,7 @@ char compute_check(const char *org_unique) {
 > 可为 0（无校验）、1（Damm32 / Luhn mod 32）或 2（Mod 97）。
 >
 > **兜底方案（Phase 2 先用）**：若 32×32 Damm 表尚未就绪，可选：
-> - **Mod 97**（字母数字，IBAN 思路）→ **2 位**校验（`CHECK` 长度 2）；输出固定为**两位十进制数字**（`00`–`96`），是 Crockford Base32 字符集的**子集**（例：`…-42`，不是字母）
+> - **Mod 97**（字母数字，IBAN 思路）→ **2 位**校验（`CHECK` 长度 2）；输出固定为**两位十进制数字**（`02`–`98`，校验位不可能为 00/01），是 Crockford Base32 字符集的**子集**（例：`…-42`，不是字母）
 > - **Luhn mod 32**（N=32，Crockford Base32）→ **1 位**校验（`CHECK` 长度 1）。
 >
 > 两者实现简单、验证充分；最终算法与 `CHECK` 长度在 Phase 2 定稿并固化（同一部署内保持一致）。
@@ -844,3 +844,4 @@ int damm32_verify(const char *input) {
 | 1.13 | 2026-09-11 | 五审修正：附录 B.2 补**参考实现算例（黄金样本）** `CN-WH01-9AF3C1D2 → CHECK=H`，与 `damm32.py` 相互锚定 |
 | 1.14 | 2026-09-11 | 六审修正：附录 B.2 去除占位 32×32 表，改为 GF(2⁵) 代数式 `T[x][y]=2·(x⊕y)` 直接计算（`gf_mul`+`quasigroup`），并补 `-` 分隔符跳过；B.1 补构造定义 |
 | 1.15 | 2026-09-11 | 七审修正：① CHECK 只由 `ORG-UNIQUE` 计算（不含 CC；CC=ISO 3166-1 alpha-2 不套 Crockford 限制、不参与校验）；② 附录 B.2 黄金样本 + §2.2 示例校验值按新规则重算（Damm32→`B`、Mod97→`21`）；③ 所有样例统一用 CC=`CN`（删除 JP 示例） |
+| 1.16 | 2026-09-11 | 八审修正：§3.2 Mod 97 输出范围更正为 `02`–`98`（校验位不可能为 00/01；原误写 00–96） |
