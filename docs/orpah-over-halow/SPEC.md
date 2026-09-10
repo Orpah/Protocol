@@ -1,12 +1,14 @@
 # ORPAH-over-HaLow 协议规格（草稿 → L1/L2/L3 实测回填）
 
-- 状态：**v0.5**（2026-09-10）· L1/L2 已在 `halow-demo/simulator/orpah` 实现并验收
+- 状态：**v0.6**（2026-09-10）· L1/L2 已在 `halow-demo/simulator/orpah` 实现并验收
   （`demo_l1.py` / `demo_l2.py` PASS）；**L3（多 Router 漫游/去重 + SN 字符集）已落地**
   （`demo_l3.py` PASS，F-01/F-04/F-07 定稿）；**L3b（Router 主动拉取 LOST-TABLE）已落地**
   （`demo_l4.py` PASS，F-03 补充）；**L3c（发现走失上报 ORPAH-FOUND）已落地**（UI「发现记录」，
-  见 §5/§7/§9/§10）；报文字段/走失表流程按实测回填（§5/§6/§7）。
+  见 §5/§7/§9/§10）；**SN 码号已对齐《Orpah ID 协议规范》v1.7（`CC-ORG-UNIQUE[-CHECK]`）**；
+  报文字段/走失表流程按实测回填（§5/§6/§7）。
 - 文档负责人：shijh（Orpah）
-- 关联：`halow-demo`（L1/L2/L3/L3b 原型与测试台，成熟后抽离）；泰芯 TX-AH / TH-RJ45（Phase1 硬件）
+- 关联：`halow-demo`（L1/L2/L3/L3b 原型与测试台，成熟后抽离）；泰芯 TX-AH / TH-RJ45（Phase1 硬件）；
+  `OrpahIDProtocol.md`（SN 码号与签名层，SN 格式以其为准）
 - 本文件是「可实现的 ORPAH-over-HaLow」规格：L0 骨架已按 L1/L2/L3 实测填充为可实现的
   报文定义（JSON + UDP 传输）；仍待决点见 §10 开放问题。
 
@@ -127,16 +129,17 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 | R→S | `ORPAH-LOST-TABLE-REQ` | Router 主动拉取当前走失表（F-03/L3b） | v,type,ts |
 | R→S | `ORPAH-FOUND` | Router 发现走失设备（业务告警，每次命中都发，L3c） | v,type,sn,ts |
 
-示例（REPORT）：`{"v":1,"type":"ORPAH-REPORT","sn":"ORPAH-0001","ts":1788961894,"rssi":-55,"seq":1}`
+示例（REPORT）：`{"v":1,"type":"ORPAH-REPORT","sn":"CN-WH01-9AF3C1D2","ts":1788961894,"rssi":-55,"seq":1}`
 
 - **status 状态码（TRACKING-STATUS）**：`TRACKED`（走失库命中）/ `NOT-TRACKED`（未命中）；
   校验/记录错误用 `ERROR` 报文的 code 字段（见下）。
 - **ERROR code**：`FORMAT-ERR` / `DECODE-ERR` / `LOG-ERR` / `SERVER-ERR`。
-- **SN 标识（F-01 定稿 2026-09-10：不用真实 IMEI15/Luhn）**：被追踪物/人佩戴芯片的身份 =
-  自定义 SN，字符集 **中文汉字 + 英文(大小写) + 数字**（另保留 `-` 分隔，兼容既有示例如
-  ORPAH-0001），长度 1–32。Server 收 REPORT 时校验 sn（原因 empty / too-long /
-  bad-charset），非法 → ERROR code=`FORMAT-ERR`（msg_text `bad-sn:<原因>`）且不计数。
-  中文字符 SN 可用（如 `小明2024`，demo_l3 默认值）。
+- **SN 码号（对齐《Orpah ID 协议规范》v1.7，取代早前“中文/英文/数字”自定义）**：
+  SN = **`CC-ORG-UNIQUE[-CHECK]`**——CC=ISO 3166-1 alpha-2；ORG 2–6 位、UNIQUE 8–16 位、
+  CHECK 0–2 位（Crockford Base32，去除易混的 `I L O U`）。Server 收 REPORT 时校验
+  （`orpah_proto.sn_err`，原因 empty / too-long / bad-format），非法 → ERROR
+  code=`FORMAT-ERR`（msg_text `bad-sn:<原因>`）且不计数。**中文/姓名不进 SN**（放 payload
+  业务字段，按 Orpah ID 的 NFKC/JCS 处理）；默认示例 SN = `CN-WH01-9AF3C1D2`。
 - **编码**：Phase 1 用 **UDP+JSON**（已定，见 §6 选项 A）最快验证语义；免电池版再优化为
   紧凑二进制（选项 B，Phase 2）。
 
@@ -193,7 +196,7 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
   UI（orpah/ui_server.py :8901）加消息流面板 + 走失表标记/取消。
 - **L3（多 Router 选路/去重 + SN 字符集，✅ 已完成 2026-09-10）**：漫游式双 Router
   （2×AP+2×Router 共用 1 Server）验证 F-04/F-07（(sn,seq) 去重/最新 Router/回执归属）
-  + F-01（SN 中英数字校验）；`demo_l3.py` 7 项检查全 PASS。
+  + F-01（SN 码号校验）；`demo_l3.py` 7 项检查全 PASS。
 - **L3b（Router 主动拉表，✅ 已完成 2026-09-10）**：新增 `ORPAH-LOST-TABLE-REQ`；Router
   启动即拉、未同步（重启后）时首个 REQ-CONNECT 再拉一次（避免每条 REQ 都拉），Server 记入
   见过集并回全量表；`demo_l4.py` 4 项检查全 PASS。UI「走失表」卡片加「服务器发布记录」显示
@@ -211,7 +214,7 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 
 | # | 问题 | 归属 | 状态 |
 |---|---|---|---|
-| F-01 | 身份标识：真实 IMEI15 vs 自定义 SN？ | §5 | **已定（2026-09-10）**：不用 IMEI15；SN=中/英/数字（可含 `-`），长度 1–32；Server 校验非法回 FORMAT-ERR（L3 落地） |
+| F-01 | 身份标识（SN 码号）？ | §5 | **已定**：SN=`CC-ORG-UNIQUE[-CHECK]`（Crockford Base32），对齐《Orpah ID 协议规范》v1.7；Server 校验非法回 FORMAT-ERR（2026-09-10 对齐） |
 | F-02 | 传输=UDP+JSON(A) vs 链路层小帧(B)？端口/长度？ | §6 | **已定 = A（UDP+JSON）**，Server 端口 19447 |
 | F-03 | 走失表如何下发/过期/撤销到 Router？ | §7 | 变更即全量下发（L2）+ 新 Router 首报追平（L3）+ **Router 主动拉取（启动/缓存未命中，L3b）**；按子集/过期待细化 |
 | F-04 | 多 Router 上报去重 / 最新位置策略？ | §7 | **已定（2026-09-10）**：(sn,seq) 去重 + 上报来源=当前 Router（最新位置优先）+ 新 Router 首报追平（L3 落地） |
