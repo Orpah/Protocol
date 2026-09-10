@@ -1,4 +1,4 @@
-# Orpah ID 协议规范 v1.12
+# Orpah ID 协议规范 v1.13
 
 > **Orpah ID**（*Orpah Identity*）是一个"无认证 Wi-Fi 寻人"协议：client（佩戴终端）向周围的 router（接入点）发送身份/位置信号，router 不要求 client 认证即可转发到 server，server 根据多个 router 的接收情况判定 client 大致位置。本协议即 *Orpah ID Protocol*。
 >
@@ -782,6 +782,10 @@ int damm32_verify(const char *input) {
 > **注意**：完整的 32×32 quasigroup 表将在 Phase 2 真机验证时确定最终值（本附录代码为参考骨架，
 > `char_to_index`/`index_to_char` 已按 Crockford 字母表正反查表实现，表内容本身待固化）。
 
+> **参考实现算例（黄金样本）**：`CN-WH01-9AF3C1D2` → CHECK = `H`，整串
+> `CN-WH01-9AF3C1D2-H` 校验通过。该算例由 `halow-demo/simulator/orpah/damm32.py`
+> 的自检产生（拟群 `T[x][y] = 2·(x⊕y)`，GF(2⁵)、`p(t)=t⁵+t+1`），可作跨实现对照基准。
+
 > 900MHz 地球/月球链路距离参考已移至《[Orpah ID 地外篇](OrpahIDSpace.md)》。
 
 ---
@@ -813,3 +817,4 @@ int damm32_verify(const char *input) {
 | 1.10 | 2026-09-11 | 三审修正：① §3.2 `compute_check` 注释明确传入 `CC-ORG-UNIQUE`（不含 CHECK）；② §9.3 验签伪代码增加 `ts=0` 分支（跳过时间窗口、仅靠 nonce 防重放，呼应 §5.5）；③ 地外篇坐标基准注明 IAU 月心坐标系、月球示例改用嫦娥五号 `Statio Tianchuan` |
 | 1.11 | 2026-09-11 | 四审修正：修订历史 v1.1/v1.4 补过期注记（900MHz 附录已移至地外篇 §3；产线记录字段 v1.8 起含 hmac_key）；地外篇经度统一 0–360°E、嫦娥五号补 USGS 引用 |
 | 1.12 | 2026-09-11 | 同步地外篇 v1.12（§2.2 删除“俗名 Chang'e 5”矛盾表述，括注改为任务标识） |
+| 1.13 | 2026-09-11 | 五审修正：附录 B.2 补**参考实现算例（黄金样本）** `CN-WH01-9AF3C1D2 → CHECK=H`，与 `damm32.py` 相互锚定 |
