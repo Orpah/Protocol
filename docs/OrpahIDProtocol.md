@@ -1,4 +1,4 @@
-# Orpah ID 协议规范 v1.8
+# Orpah ID 协议规范 v1.9
 
 > **Orpah ID**（*Orpah Identity*）是一个"无认证 Wi-Fi 寻人"协议：client（佩戴终端）向周围的 router（接入点）发送身份/位置信号，router 不要求 client 认证即可转发到 server，server 根据多个 router 的接收情况判定 client 大致位置。本协议即 *Orpah ID Protocol*。
 >
@@ -683,7 +683,7 @@ def verify_report(report):
 
 > ⚠️ 以下项目需在真机上验证后定稿，当前为设计假设：
 
-1. **Damm 32 扩展表**：标准 Damm 为十进制，Crockford Base32（N=32）需构造 32×32 quasigroup。若构造复杂，Phase 2 先用 Mod 97（两位校验）或 Luhn mod 32（一位校验）
+1. **Damm 32 扩展表**：标准 Damm 为十进制，Crockford Base32（N=32）需构造 32×32 quasigroup。若构造复杂，Phase 2 先用 Mod 97（两位校验）或 Luhn mod 32（一位校验）（附录 B 为参考骨架，表待 Phase 2 固化）
 2. **ATECC608B Base32 RNG**：确认 `atcab_random` 输出范围足够覆盖 8–16 位 Crockford Base32（需 16 字节随机 → 取前 N 字节）
 3. **承载链路未关联数据**：若使用 HaLow，需验证 STA 在未关联状态能否通过数据帧发送自定义 payload；若不可行，统一走"短关联 + 已签 JSON"
 4. **JCS 实现一致性**：CH32（C）与 server（Python）的 JCS 输出必须字节一致（尤其是签名预像 `JCS({"hdr":…,"payload":…})`），需交叉测试
@@ -720,7 +720,7 @@ def verify_report(report):
 
 Damm 算法基于一个完全 anti-symmetric 的 quasigroup 运算。对于 Crockford Base32（0–9, A–Z 去除 I L O U），需要一个 32×32 的 quasigroup 表。
 
-#### B.2 C 语言参考实现
+#### B.2 C 语言参考实现（Phase 2 定稿前为示意骨架；quasigroup 表待固化）
 
 ```c
 #include <stdint.h>
@@ -732,13 +732,14 @@ static const uint8_t damm32_table[32][32] = {
     // ... (32x32 矩阵，此处省略，Phase 2 真机验证时确定最终值)
 };
 
-// 将 Crockford Base32 字符转换为索引（0-31；I L O U 非法）
+// 将 Crockford Base32 字符转换为索引（0-31）；非法字符（含 I L O U）返回 0xFF。
+// 注意：字母表去掉了 I/L/O/U，字母索引不连续，不能用 c-'A'+10 直接换算，须查表/反查。
 static uint8_t char_to_index(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c == 'I' || c == 'L' || c == 'O' || c == 'U') return 0xFF;
-    if (c >= 'A' && c <= 'Z') return c - 'A' + 10;   // 跳过 I L O U 的映射需查表修正
-    if (c >= 'a' && c <= 'z') return c - 'a' + 10;
-    return 0xFF; // 非法字符
+    static const char *CA = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+    if (c >= 'a' && c <= 'z') c -= 'a' - 'A';     // 小写 → 大写
+    for (uint8_t i = 0; i < 32; i++)
+        if (CA[i] == c) return i;
+    return 0xFF; // 非法字符（含 I L O U）
 }
 
 // 将索引转换回 Crockford Base32 字符（0-31）
@@ -776,7 +777,8 @@ int damm32_verify(const char *input) {
 }
 ```
 
-> **注意**：完整的 32×32 quasigroup 表将在 Phase 2 真机验证时确定最终值。参考实现可从 Damm 原始论文或开源实现中生成；`char_to_index` 对 `I L O U` 的处理需以最终 Crockford 映射表为准（上面为示意）。
+> **注意**：完整的 32×32 quasigroup 表将在 Phase 2 真机验证时确定最终值（本附录代码为参考骨架，
+> `char_to_index`/`index_to_char` 已按 Crockford 字母表正反查表实现，表内容本身待固化）。
 
 > 900MHz 地球/月球链路距离参考已移至《[Orpah ID 地外篇](OrpahIDSpace.md)》。
 
@@ -805,3 +807,4 @@ int damm32_verify(const char *input) {
 | 1.6 | 2026-09-11 | 版本号统一（标题与修订记录对齐至 1.6） |
 | 1.7 | 2026-09-11 | 本轮修订：① CHECK 字符集改为 Crockford Base32、长度放宽为 0/1/2 位；② 字符集 Base36→**Crockford Base32**（Damm 32 / Luhn mod 32）；③ 精确化**签名预像**定义（`JCS({"hdr":…,"payload":…})`）与 HMAC 预像；④ L3 无签名改用 `alg=none`（仅 `level=3` 接受，视为不可信）；⑤ 新增 §5.7 定位数据源（client 观测 vs router 观测 `xport`）、§5.8 限频；⑥ §5.5 补充无 RTC 与校时；⑦ §6 标注参考实现（非规范性）；§7.1 补“需定制 AP 抓 probe”实现前提与短码不透明；⑧ 地外内容移至《Orpah ID 地外篇》 |
 | 1.8 | 2026-09-11 | 审计修正：① **§9.1 注册接口补 `hmac_key`**（降级 HS256 需对称密钥，否则降级后全部拒报），§6.2 Step 3 记录含 hmac_key，§9.3 无密钥时 `reject(no_hmac_key)`；② §3.2 明确 Mod 97 输出为**两位十进制**（Crockford 子集）并修正示例；③ §2.5 正则拆行注释 + Crockford 字符类映射表；④ §1.3 补 STA/AP 别名、§7.1 去除重复括号；⑤ 地外篇版本对齐 v1.8 |
+| 1.9 | 2026-09-11 | 二审修正：① 附录 B.2 `char_to_index` 改用 Crockford 字母表反查（原 `c-'A'+10` 忽略 I/L/O/U 致索引错位）；② 附录 B.2 标注“Phase 2 定稿前为示意骨架”；③ 地外篇天体码改用**三字母**（XAA/XBB/XCC），并更正 Apollo 11 为 `Tranquillitatis Statio` 俗名注记 |
