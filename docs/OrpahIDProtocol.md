@@ -1,4 +1,4 @@
-# Orpah ID 协议规范 v1.14
+# Orpah ID 协议规范 v1.15
 
 > **Orpah ID**（*Orpah Identity*）是一个"无认证 Wi-Fi 寻人"协议：client（佩戴终端）向周围的 router（接入点）发送身份/位置信号，router 不要求 client 认证即可转发到 server，server 根据多个 router 的接收情况判定 client 大致位置。本协议即 *Orpah ID Protocol*。
 >
@@ -54,7 +54,7 @@ CC-ORG-UNIQUE[-CHECK]
 
 | 字段 | 长度 | 字符集 | 说明 |
 |------|------|--------|------|
-| CC | 2 位 | A–Z（ISO 3166-1） | 国家/地区码，如 CN/US/JP；**不套用 Crockford 限制**（部分国家码含 I/L/O/U，如 AU/NO） |
+| CC | 2 位 | A–Z（ISO 3166-1） | 国家/地区码（本规范样例统一用 CN）；**不套用 Crockford 限制**（允许含 I/L/O/U 的字母） |
 | ORG | 2–6 位 | Crockford Base32 | 机构码，私有自分配或向注册机构申请 |
 | UNIQUE | 8–16 位 | Crockford Base32 | 唯一流水，由 SE 硬件 RNG 或注册机构分配 |
 | CHECK | 0/1/2 位 | Crockford Base32 | 校验码，可选：1 位（Damm32 / Luhn mod 32）或 2 位（Mod 97），见 §3 |
@@ -65,10 +65,11 @@ CC-ORG-UNIQUE[-CHECK]
 
 ```
 CN-WH01-9AF3C1D28E44          （无校验码）
-CN-WH01-9AF3C1D2-X            （1 位校验：Damm32，X 为校验字符）
-CN-WH01-9AF3C1D2-42           （2 位校验：Mod 97，两位十进制数字）
-JP-TK05-7B2E9F1A0C            （日本，机构 TK05）
+CN-WH01-9AF3C1D2-B            （1 位校验：Damm32，B 为校验字符）
+CN-WH01-9AF3C1D2-21           （2 位校验：Mod 97，两位十进制数字）
 ```
+
+> 本规范所有示例统一使用 CC=`CN`（中国）；校验位只由 `ORG-UNIQUE` 计算（不含 CC）。
 
 ### 2.3 规则
 
@@ -127,7 +128,7 @@ JP-TK05-7B2E9F1A0C            （日本，机构 TK05）
 
 ### 3.2 加校验码（有人工录入场景）
 
-当存在人工抄写、电话报号、工单录入等场景时，建议在 UNIQUE 后追加 1 位校验码。
+当存在人工抄写、电话报号、工单录入等场景时，建议在 UNIQUE 后追加 1 位校验码。**校验位只由 `ORG-UNIQUE` 计算（不含 `CC`）**。
 
 #### 算法：Damm（Crockford Base32 扩展）
 
@@ -137,21 +138,15 @@ Damm 算法能检测**所有单字错误**和**所有相邻双字换位**，实�
 **校验位就是同一字母表（Crockford Base32）中的 1 个字符**（可为数字或字母），取值由算法给定，不可强制为数字。
 
 ```
-// Phase 2 待验证：以下为参考实现，需真机跑通后定稿
-// 标准 Damm 用十进制 0-9 的 10×10 表；N=32 需构造 32×32 quasigroup
-// 构造方法：用适当的 32 元 quasigroup（或用已知构造法生成）
-
-uint8_t damm32_table[32][32] = {
-    // ... 32×32 quasigroup（Phase 2 生成并固化）
-};
-
-// 参数 sn_without_check = "CC-ORG-UNIQUE" 部分（不含连字符后的 CHECK）
-char compute_check(const char *sn_without_check) {
+// 校验位只算 ORG-UNIQUE（不含 CC；CC=ISO 3166-1 alpha-2，不参与校验）。
+// 32×32 quasigroup 构造已定稿，见附录 B.2（T[x][y] = 2·(x⊕y)，GF(2^5)、p(t)=t^5+t+1）。
+// 参数 org_unique = "ORG-UNIQUE"（不含 CC，也不含连字符后的 CHECK）
+char compute_check(const char *org_unique) {
     uint8_t state = 0;
-    for (char *p = sn_without_check; *p; p++) {
+    for (char *p = org_unique; *p; p++) {
         if (*p == '-') continue;            // 跳过分隔符
         uint8_t d = crockford_to_index(*p);  // Crockford Base32 → 0-31
-        state = damm32_table[state][d];
+        state = damm32_table[state][d];      // damm32_table 构造见附录 B.2
     }
     return index_to_crockford(state);        // 0-31 → Crockford 字符（0-9 A-Z，无 I L O U）
 }
@@ -729,6 +724,9 @@ Damm 算法基于一个**弱全反对称拟群**（weak totally anti-symmetric q
 + 所有相邻换位」的充要条件（拉丁方、主对角线全 0、相邻换位条件），已在 `damm32.py` 与
 Web 工具页穷举验证（长度 ≤3 全部 33824 串 0 漏检）。
 
+**校验位只算 `ORG-UNIQUE`（不含 `CC`）**：`CC` 为 ISO 3166-1 alpha-2，不套 Crockford 限制、
+不参与校验位计算（`CC` 可含 I/L/O/U，不影响 CHECK）。
+
 #### B.2 C 语言参考实现（拟群由 GF(2⁵) 代数式直接计算，无需固化 32×32 表）
 
 ```c
@@ -772,7 +770,7 @@ static char index_to_char(uint8_t idx) {
     return (idx < 32) ? CA[idx] : '\0';
 }
 
-// 计算 Damm 32 校验字符（输入 = CC-ORG-UNIQUE，可含 '-' 分隔符）
+// 计算 Damm 32 校验字符（输入 = ORG-UNIQUE，不含 CC，可含 '-' 分隔符）
 char damm32_compute(const char *input) {
     uint8_t interim = 0;
     size_t len = strlen(input);
@@ -788,7 +786,7 @@ char damm32_compute(const char *input) {
     return index_to_char(interim);
 }
 
-// 验证 Damm 32 校验（输入包含校验字符）
+// 验证 Damm 32 校验（输入 = ORG-UNIQUE-CHECK，不含 CC）
 int damm32_verify(const char *input) {
     uint8_t interim = 0;
     size_t len = strlen(input);
@@ -807,9 +805,10 @@ int damm32_verify(const char *input) {
 > **注意**：拟群由 GF(2⁵) 代数式 `2·(x⊕y)`（`p(t)=t⁵+t+1`）直接计算，无需预置 32×32 表；
 > 若真机需免去逐位 GF 乘法，可用 `damm32.py` 的 `build_table()` 生成 32×32 常量表内联（同一构造）。
 
-> **参考实现算例（黄金样本）**：`CN-WH01-9AF3C1D2` → CHECK = `H`，整串
-> `CN-WH01-9AF3C1D2-H` 校验通过。该算例由 `halow-demo/simulator/orpah/damm32.py`
-> 的自检产生（拟群 `T[x][y] = 2·(x⊕y)`，GF(2⁵)、`p(t)=t⁵+t+1`），可作跨实现对照基准。
+> **参考实现算例（黄金样本）**：`ORG-UNIQUE` = `WH01-9AF3C1D2` → CHECK = `B`，整串
+> `CN-WH01-9AF3C1D2-B` 校验通过（CC=CN，校验位只算 ORG-UNIQUE）。该算例由
+> `halow-demo/simulator/orpah/damm32.py` 的自检产生（拟群 `T[x][y] = 2·(x⊕y)`，
+> GF(2⁵)、`p(t)=t⁵+t+1`），可作跨实现对照基准。
 
 > 900MHz 地球/月球链路距离参考已移至《[Orpah ID 地外篇](OrpahIDSpace.md)》。
 
@@ -844,3 +843,4 @@ int damm32_verify(const char *input) {
 | 1.12 | 2026-09-11 | 同步地外篇 v1.12（§2.2 删除“俗名 Chang'e 5”矛盾表述，括注改为任务标识） |
 | 1.13 | 2026-09-11 | 五审修正：附录 B.2 补**参考实现算例（黄金样本）** `CN-WH01-9AF3C1D2 → CHECK=H`，与 `damm32.py` 相互锚定 |
 | 1.14 | 2026-09-11 | 六审修正：附录 B.2 去除占位 32×32 表，改为 GF(2⁵) 代数式 `T[x][y]=2·(x⊕y)` 直接计算（`gf_mul`+`quasigroup`），并补 `-` 分隔符跳过；B.1 补构造定义 |
+| 1.15 | 2026-09-11 | 七审修正：① CHECK 只由 `ORG-UNIQUE` 计算（不含 CC；CC=ISO 3166-1 alpha-2 不套 Crockford 限制、不参与校验）；② 附录 B.2 黄金样本 + §2.2 示例校验值按新规则重算（Damm32→`B`、Mod97→`21`）；③ 所有样例统一用 CC=`CN`（删除 JP 示例） |
