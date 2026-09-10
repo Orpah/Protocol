@@ -1,4 +1,4 @@
-# Orpah ID 协议规范 v1.16
+# Orpah ID 协议规范 v1.17
 
 > **Orpah ID**（*Orpah Identity*）是一个"无认证 Wi-Fi 寻人"协议：client（佩戴终端）向周围的 router（接入点）发送身份/位置信号，router 不要求 client 认证即可转发到 server，server 根据多个 router 的接收情况判定 client 大致位置。本协议即 *Orpah ID Protocol*。
 >
@@ -161,6 +161,11 @@ char compute_check(const char *org_unique) {
 > - **Luhn mod 32**（N=32，Crockford Base32）→ **1 位**校验（`CHECK` 长度 1）。
 >
 > 两者实现简单、验证充分；最终算法与 `CHECK` 长度在 Phase 2 定稿并固化（同一部署内保持一致）。
+>
+> **Mod 97 字母→数字映射**：采用 IBAN 规则，`A=10, B=11, …, Z=35`（字符序数值，
+> **非** Crockford Base32 索引；二者对 J/K/M/N/P/Q/R/S/T/V/W/X/Y/Z 的取值不同）。
+> 完整校验规则：`N` = 字母数字串（去 `-` 分隔符）按上述映射拼成的十进制数，末尾追加 `"00"`；
+> `CHECK = 98 − (N mod 97)`，不足两位补零（输出范围 `02`–`98`）。
 
 #### 校验时机
 
@@ -680,7 +685,7 @@ def verify_report(report):
 
 > ⚠️ 以下项目需在真机上验证后定稿，当前为设计假设：
 
-1. **Damm 32 扩展表**：标准 Damm 为十进制，Crockford Base32（N=32）需构造 32×32 quasigroup。若构造复杂，Phase 2 先用 Mod 97（两位校验）或 Luhn mod 32（一位校验）（附录 B 为参考骨架，表待 Phase 2 固化）
+1. **Damm 32 扩展表**：**已完成**——Damm32 拟群构造定稿为 GF(2⁵) 代数式 `T[x][y] = 2·(x⊕y)`（`p(t)=t⁵+t+1`，见附录 B.1/B.2），黄金样本 `WH01-9AF3C1D2 → B` 已由 `damm32.py` / `c/damm32.c` / Web 工具页交叉验证；1 位校验仍可选 Luhn mod 32、2 位用 Mod 97
 2. **ATECC608B Base32 RNG**：确认 `atcab_random` 输出范围足够覆盖 8–16 位 Crockford Base32（需 16 字节随机 → 取前 N 字节）
 3. **承载链路未关联数据**：若使用 HaLow，需验证 STA 在未关联状态能否通过数据帧发送自定义 payload；若不可行，统一走"短关联 + 已签 JSON"
 4. **JCS 实现一致性**：CH32（C）与 server（Python）的 JCS 输出必须字节一致（尤其是签名预像 `JCS({"hdr":…,"payload":…})`），需交叉测试
@@ -786,7 +791,8 @@ char damm32_compute(const char *input) {
     return index_to_char(interim);
 }
 
-// 验证 Damm 32 校验（输入 = ORG-UNIQUE-CHECK，不含 CC）
+// 验证 Damm 32 校验（输入 = ORG-UNIQUE-CHECK，不含 CC）。
+// 返回 0 同时涵盖「校验位不匹配」与「含非法字符（I/L/O/U 等）」两种情况，调用方无需区分。
 int damm32_verify(const char *input) {
     uint8_t interim = 0;
     size_t len = strlen(input);
@@ -845,3 +851,4 @@ int damm32_verify(const char *input) {
 | 1.14 | 2026-09-11 | 六审修正：附录 B.2 去除占位 32×32 表，改为 GF(2⁵) 代数式 `T[x][y]=2·(x⊕y)` 直接计算（`gf_mul`+`quasigroup`），并补 `-` 分隔符跳过；B.1 补构造定义 |
 | 1.15 | 2026-09-11 | 七审修正：① CHECK 只由 `ORG-UNIQUE` 计算（不含 CC；CC=ISO 3166-1 alpha-2 不套 Crockford 限制、不参与校验）；② 附录 B.2 黄金样本 + §2.2 示例校验值按新规则重算（Damm32→`B`、Mod97→`21`）；③ 所有样例统一用 CC=`CN`（删除 JP 示例） |
 | 1.16 | 2026-09-11 | 八审修正：§3.2 Mod 97 输出范围更正为 `02`–`98`（校验位不可能为 00/01；原误写 00–96） |
+| 1.17 | 2026-09-11 | 九审修正：① §3.2 补 Mod 97 字母→数字映射（IBAN 规则 A=10..Z=35，非 Crockford 索引）与完整校验式；② §11 待验证项 1 更新为「已完成」（Damm32 构造定稿 GF(2⁵)）；③ 附录 B.2 `damm32_verify` 注释说明返回 0 涵盖两种失败原因 |
