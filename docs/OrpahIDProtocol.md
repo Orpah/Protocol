@@ -1,4 +1,4 @@
-# Orpah ID 协议规范 v1.13
+# Orpah ID 协议规范 v1.14
 
 > **Orpah ID**（*Orpah Identity*）是一个"无认证 Wi-Fi 寻人"协议：client（佩戴终端）向周围的 router（接入点）发送身份/位置信号，router 不要求 client 认证即可转发到 server，server 根据多个 router 的接收情况判定 client 大致位置。本协议即 *Orpah ID Protocol*。
 >
@@ -720,19 +720,41 @@ def verify_report(report):
 
 #### B.1 算法原理
 
-Damm 算法基于一个完全 anti-symmetric 的 quasigroup 运算。对于 Crockford Base32（0–9, A–Z 去除 I L O U），需要一个 32×32 的 quasigroup 表。
+Damm 算法基于一个**弱全反对称拟群**（weak totally anti-symmetric quasigroup）运算。
+对 Crockford Base32（0–9, A–Z 去除 I L O U，共 32 符号），取有限域 GF(2⁵) 上的拟群：
 
-#### B.2 C 语言参考实现（Phase 2 定稿前为示意骨架；quasigroup 表待固化）
+&nbsp;&nbsp;`x ⊙ y = 2 · (x ⊕ y)`　（`·` = GF(2⁵) 乘法，`⊕` = 域加法 = 按位异或，`2` = 域元素 t）
+
+其中不可约多项式 `p(t) = t⁵ + t + 1`（系数 `0x23`）。该拟群满足 Damm 检出「所有单字符替换
++ 所有相邻换位」的充要条件（拉丁方、主对角线全 0、相邻换位条件），已在 `damm32.py` 与
+Web 工具页穷举验证（长度 ≤3 全部 33824 串 0 漏检）。
+
+#### B.2 C 语言参考实现（拟群由 GF(2⁵) 代数式直接计算，无需固化 32×32 表）
 
 ```c
 #include <stdint.h>
 #include <string.h>
 
-// Damm 32 quasigroup table (32x32)
-// 行/列索引: 0-31 对应 Crockford Base32（0-9 → '0'-'9'，10-31 → A-Z 去除 I L O U）
-static const uint8_t damm32_table[32][32] = {
-    // ... (32x32 矩阵，此处省略，Phase 2 真机验证时确定最终值)
-};
+// ---- Damm32 拟群：x ⊙ y = 2 · (x ⊕ y)，在 GF(2^5) 上 ----
+// 不可约多项式 p(t) = t^5 + t + 1（系数 0x23）。该拟群是弱全反对称拟群，
+// 满足 Damm 检出「所有单字符替换 + 所有相邻换位」的充要条件。
+
+// GF(2^5) 乘法：无进位乘 + 模 p(t) 约简
+static uint8_t gf_mul(uint8_t a, uint8_t b) {
+    uint8_t r = 0;
+    for (int i = 0; i < 5; i++) {
+        if (b & 1) r ^= a;
+        b >>= 1;
+        a <<= 1;
+        if (a & 0x20) a ^= 0x23;    // p(t) = t^5 + t + 1
+    }
+    return r & 0x1F;
+}
+
+// 拟群运算：x ⊙ y = 2 · (x ⊕ y)；2 = 域元素 t
+static uint8_t quasigroup(uint8_t x, uint8_t y) {
+    return gf_mul(2, x ^ y);
+}
 
 // 将 Crockford Base32 字符转换为索引（0-31）；非法字符（含 I L O U）返回 0xFF。
 // 注意：字母表去掉了 I/L/O/U，字母索引不连续，不能用 c-'A'+10 直接换算，须查表/反查。
@@ -750,17 +772,19 @@ static char index_to_char(uint8_t idx) {
     return (idx < 32) ? CA[idx] : '\0';
 }
 
-// 计算 Damm 32 校验字符
+// 计算 Damm 32 校验字符（输入 = CC-ORG-UNIQUE，可含 '-' 分隔符）
 char damm32_compute(const char *input) {
     uint8_t interim = 0;
     size_t len = strlen(input);
     
     for (size_t i = 0; i < len; i++) {
+        if (input[i] == '-') continue;       // 跳过分隔符（与 sn_digits 一致）
         uint8_t idx = char_to_index(input[i]);
         if (idx == 0xFF) return '\0'; // 非法输入
-        interim = damm32_table[interim][idx];
+        interim = quasigroup(interim, idx);
     }
-    
+    // 校验位 c 满足 quasigroup(interim, c) == 0；本构造下
+    // 2·(interim⊕c) = 0 ⟺ interim⊕c = 0（2 可逆）⟺ c = interim
     return index_to_char(interim);
 }
 
@@ -770,17 +794,18 @@ int damm32_verify(const char *input) {
     size_t len = strlen(input);
     
     for (size_t i = 0; i < len; i++) {
+        if (input[i] == '-') continue;       // 跳过分隔符（与 sn_digits 一致）
         uint8_t idx = char_to_index(input[i]);
         if (idx == 0xFF) return 0;
-        interim = damm32_table[interim][idx];
+        interim = quasigroup(interim, idx);
     }
     
     return (interim == 0);
 }
 ```
 
-> **注意**：完整的 32×32 quasigroup 表将在 Phase 2 真机验证时确定最终值（本附录代码为参考骨架，
-> `char_to_index`/`index_to_char` 已按 Crockford 字母表正反查表实现，表内容本身待固化）。
+> **注意**：拟群由 GF(2⁵) 代数式 `2·(x⊕y)`（`p(t)=t⁵+t+1`）直接计算，无需预置 32×32 表；
+> 若真机需免去逐位 GF 乘法，可用 `damm32.py` 的 `build_table()` 生成 32×32 常量表内联（同一构造）。
 
 > **参考实现算例（黄金样本）**：`CN-WH01-9AF3C1D2` → CHECK = `H`，整串
 > `CN-WH01-9AF3C1D2-H` 校验通过。该算例由 `halow-demo/simulator/orpah/damm32.py`
@@ -818,3 +843,4 @@ int damm32_verify(const char *input) {
 | 1.11 | 2026-09-11 | 四审修正：修订历史 v1.1/v1.4 补过期注记（900MHz 附录已移至地外篇 §3；产线记录字段 v1.8 起含 hmac_key）；地外篇经度统一 0–360°E、嫦娥五号补 USGS 引用 |
 | 1.12 | 2026-09-11 | 同步地外篇 v1.12（§2.2 删除“俗名 Chang'e 5”矛盾表述，括注改为任务标识） |
 | 1.13 | 2026-09-11 | 五审修正：附录 B.2 补**参考实现算例（黄金样本）** `CN-WH01-9AF3C1D2 → CHECK=H`，与 `damm32.py` 相互锚定 |
+| 1.14 | 2026-09-11 | 六审修正：附录 B.2 去除占位 32×32 表，改为 GF(2⁵) 代数式 `T[x][y]=2·(x⊕y)` 直接计算（`gf_mul`+`quasigroup`），并补 `-` 分隔符跳过；B.1 补构造定义 |
