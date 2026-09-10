@@ -1,4 +1,4 @@
-# Orpah ID 协议规范 v1.9
+# Orpah ID 协议规范 v1.10
 
 > **Orpah ID**（*Orpah Identity*）是一个"无认证 Wi-Fi 寻人"协议：client（佩戴终端）向周围的 router（接入点）发送身份/位置信号，router 不要求 client 认证即可转发到 server，server 根据多个 router 的接收情况判定 client 大致位置。本协议即 *Orpah ID Protocol*。
 >
@@ -145,6 +145,7 @@ uint8_t damm32_table[32][32] = {
     // ... 32×32 quasigroup（Phase 2 生成并固化）
 };
 
+// 参数 sn_without_check = "CC-ORG-UNIQUE" 部分（不含连字符后的 CHECK）
 char compute_check(const char *sn_without_check) {
     uint8_t state = 0;
     for (char *p = sn_without_check; *p; p++) {
@@ -615,7 +616,8 @@ def verify_report(report):
         return {"accepted": True, "trust": "none"}
 
     # 2. 时间窗口（无 RTC 设备 ts 可能不准，W 属部署配置，见 §5.5）
-    if abs(now() - payload["ts"]) > 300:
+    #    ts=0 表示未知：跳过时间窗口检查，仅靠 nonce 去重防重放（§5.5）
+    if payload["ts"] != 0 and abs(now() - payload["ts"]) > 300:
         reject("timestamp_out_of_window")
 
     # 2.5 限频（§5.8）
@@ -808,3 +810,4 @@ int damm32_verify(const char *input) {
 | 1.7 | 2026-09-11 | 本轮修订：① CHECK 字符集改为 Crockford Base32、长度放宽为 0/1/2 位；② 字符集 Base36→**Crockford Base32**（Damm 32 / Luhn mod 32）；③ 精确化**签名预像**定义（`JCS({"hdr":…,"payload":…})`）与 HMAC 预像；④ L3 无签名改用 `alg=none`（仅 `level=3` 接受，视为不可信）；⑤ 新增 §5.7 定位数据源（client 观测 vs router 观测 `xport`）、§5.8 限频；⑥ §5.5 补充无 RTC 与校时；⑦ §6 标注参考实现（非规范性）；§7.1 补“需定制 AP 抓 probe”实现前提与短码不透明；⑧ 地外内容移至《Orpah ID 地外篇》 |
 | 1.8 | 2026-09-11 | 审计修正：① **§9.1 注册接口补 `hmac_key`**（降级 HS256 需对称密钥，否则降级后全部拒报），§6.2 Step 3 记录含 hmac_key，§9.3 无密钥时 `reject(no_hmac_key)`；② §3.2 明确 Mod 97 输出为**两位十进制**（Crockford 子集）并修正示例；③ §2.5 正则拆行注释 + Crockford 字符类映射表；④ §1.3 补 STA/AP 别名、§7.1 去除重复括号；⑤ 地外篇版本对齐 v1.8 |
 | 1.9 | 2026-09-11 | 二审修正：① 附录 B.2 `char_to_index` 改用 Crockford 字母表反查（原 `c-'A'+10` 忽略 I/L/O/U 致索引错位）；② 附录 B.2 标注“Phase 2 定稿前为示意骨架”；③ 地外篇天体码改用**三字母**（XAA/XBB/XCC），并更正 Apollo 11 为 `Tranquillitatis Statio` 俗名注记 |
+| 1.10 | 2026-09-11 | 三审修正：① §3.2 `compute_check` 注释明确传入 `CC-ORG-UNIQUE`（不含 CHECK）；② §9.3 验签伪代码增加 `ts=0` 分支（跳过时间窗口、仅靠 nonce 防重放，呼应 §5.5）；③ 地外篇坐标基准注明 IAU 月心坐标系、月球示例改用嫦娥五号 `Statio Tianchuan` |
