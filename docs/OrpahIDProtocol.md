@@ -1,4 +1,4 @@
-# Orpah ID 协议规范 v1.10
+# Orpah ID 协议规范 v1.11
 
 > **Orpah ID**（*Orpah Identity*）是一个"无认证 Wi-Fi 寻人"协议：client（佩戴终端）向周围的 router（接入点）发送身份/位置信号，router 不要求 client 认证即可转发到 server，server 根据多个 router 的接收情况判定 client 大致位置。本协议即 *Orpah ID Protocol*。
 >
@@ -801,13 +801,14 @@ int damm32_verify(const char *input) {
 | 版本 | 日期 | 变更 |
 |------|------|------|
 | 1.0 | 2026-09-10 | 初版：SN 编码、校验、签名、降级、报文格式 |
-| 1.1 | 2026-09-10 | 新增附录 D（900MHz 地球/月球传输距离参考）；移除防拆相关条款 |
+| 1.1 | 2026-09-10 | 新增附录 D（900MHz 地球/月球传输距离参考）；移除防拆相关条款（注：该 900MHz 参考后于 v1.7 移至《Orpah ID 地外篇》§3，本规范“附录 D”现为修订记录） |
 | 1.2 | 2026-09-10 | 明确不实施密钥轮换：移除备用/轮换密钥（Slot 2、kid_backup）、kid 并行过渡；新增 §6.3 不轮换说明与撤销-only 生命周期；简化产线烧录、降级流程与注册接口 |
 | 1.3 | 2026-09-11 | 移除 kid（Key ID）：公钥检索键改为 SN 本身；hdr 去掉 `kid` 字段，§9.1 注册接口去掉 `kid`/`hmac_kid`（改为 `hmac_key_id`），§9.3 验签改为 `get_by_sn` 并删除 kid-sn 一致性校验 |
-| 1.4 | 2026-09-11 | 移除 `hmac_key_id`：HMAC 密钥同样按 SN 检索，每设备一个、终身固定，无需独立 ID；产线记录改为 `{sn, pubkey, se_sn}`，§9.1 注册接口删除 `hmac_key_id`，§9.3 验签改为 `keystore.get_hmac_key(sn)` |
+| 1.4 | 2026-09-11 | 移除 `hmac_key_id`：HMAC 密钥同样按 SN 检索，每设备一个、终身固定，无需独立 ID；产线记录改为 `{sn, pubkey, se_sn}`（v1.8 起增补 `hmac_key` 为 `{sn, pubkey, hmac_key, se_sn}`），§9.1 注册接口删除 `hmac_key_id`，§9.3 验签改为 `keystore.get_hmac_key(sn)` |
 | 1.5 | 2026-09-11 | 协议正式命名为 **Orpah ID**（*Orpah Identity*），文档标题改为《Orpah ID 协议规范》；同步更新线上取值：`hdr.typ` 由 `orpah-report` 改为 `orpah-id-report`，SSID 短码前缀由 `ORPAH_` 改为 `ORPAHID_`，API 路径前缀由 `/orpah/` 改为 `/orpah-id/`；内部代号与文档名统一，无功能变更 |
 | 1.6 | 2026-09-11 | 版本号统一（标题与修订记录对齐至 1.6） |
 | 1.7 | 2026-09-11 | 本轮修订：① CHECK 字符集改为 Crockford Base32、长度放宽为 0/1/2 位；② 字符集 Base36→**Crockford Base32**（Damm 32 / Luhn mod 32）；③ 精确化**签名预像**定义（`JCS({"hdr":…,"payload":…})`）与 HMAC 预像；④ L3 无签名改用 `alg=none`（仅 `level=3` 接受，视为不可信）；⑤ 新增 §5.7 定位数据源（client 观测 vs router 观测 `xport`）、§5.8 限频；⑥ §5.5 补充无 RTC 与校时；⑦ §6 标注参考实现（非规范性）；§7.1 补“需定制 AP 抓 probe”实现前提与短码不透明；⑧ 地外内容移至《Orpah ID 地外篇》 |
 | 1.8 | 2026-09-11 | 审计修正：① **§9.1 注册接口补 `hmac_key`**（降级 HS256 需对称密钥，否则降级后全部拒报），§6.2 Step 3 记录含 hmac_key，§9.3 无密钥时 `reject(no_hmac_key)`；② §3.2 明确 Mod 97 输出为**两位十进制**（Crockford 子集）并修正示例；③ §2.5 正则拆行注释 + Crockford 字符类映射表；④ §1.3 补 STA/AP 别名、§7.1 去除重复括号；⑤ 地外篇版本对齐 v1.8 |
 | 1.9 | 2026-09-11 | 二审修正：① 附录 B.2 `char_to_index` 改用 Crockford 字母表反查（原 `c-'A'+10` 忽略 I/L/O/U 致索引错位）；② 附录 B.2 标注“Phase 2 定稿前为示意骨架”；③ 地外篇天体码改用**三字母**（XAA/XBB/XCC），并更正 Apollo 11 为 `Tranquillitatis Statio` 俗名注记 |
 | 1.10 | 2026-09-11 | 三审修正：① §3.2 `compute_check` 注释明确传入 `CC-ORG-UNIQUE`（不含 CHECK）；② §9.3 验签伪代码增加 `ts=0` 分支（跳过时间窗口、仅靠 nonce 防重放，呼应 §5.5）；③ 地外篇坐标基准注明 IAU 月心坐标系、月球示例改用嫦娥五号 `Statio Tianchuan` |
+| 1.11 | 2026-09-11 | 四审修正：修订历史 v1.1/v1.4 补过期注记（900MHz 附录已移至地外篇 §3；产线记录字段 v1.8 起含 hmac_key）；地外篇经度统一 0–360°E、嫦娥五号补 USGS 引用 |
