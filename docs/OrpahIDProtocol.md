@@ -1,4 +1,4 @@
-# Orpah ID 协议规范 v1.7
+# Orpah ID 协议规范 v1.8
 
 > **Orpah ID**（*Orpah Identity*）是一个"无认证 Wi-Fi 寻人"协议：client（佩戴终端）向周围的 router（接入点）发送身份/位置信号，router 不要求 client 认证即可转发到 server，server 根据多个 router 的接收情况判定 client 大致位置。本协议即 *Orpah ID Protocol*。
 >
@@ -38,8 +38,8 @@
 | CHECK | 校验码（可选） |
 | SE | Secure Element，安全元件（如 ATECC608B） |
 | JCS | JSON Canonicalization Scheme（RFC 8785） |
-| client | 佩戴终端（寻人标签） |
-| router | 接入点/转发器 |
+| client | 佩戴终端（寻人标签）＝链路层 **STA** |
+| router | 接入点/转发器 ＝链路层 **AP** |
 | server | 后端服务，负责验签与定位判定 |
 
 ---
@@ -66,7 +66,7 @@ CC-ORG-UNIQUE[-CHECK]
 ```
 CN-WH01-9AF3C1D28E44          （无校验码）
 CN-WH01-9AF3C1D2-X            （1 位校验：Damm32，X 为校验字符）
-CN-WH01-9AF3C1D2-97           （2 位校验：Mod 97，IBAN 思路）
+CN-WH01-9AF3C1D2-42           （2 位校验：Mod 97，两位十进制数字）
 JP-TK05-7B2E9F1A0C            （日本，机构 TK05）
 ```
 
@@ -92,7 +92,26 @@ JP-TK05-7B2E9F1A0C            （日本，机构 TK05）
 - **Crockford Base32 字母表**：`0123456789ABCDEFGHJKMNPQRSTVWXYZ`（去除易混的 `I L O U`）
 - 不允许：小写、空格、连字符以外的标点、Unicode 字符、控制字符
 - `ORG`/`UNIQUE`/`CHECK` 用 Crockford Base32；`CC` 为 ISO 3166-1 alpha-2，**不套用 Crockford 限制**
-- 正则：`^[A-Z]{2}-[0-9A-HJKMNP-TV-Z]{2,6}-[0-9A-HJKMNP-TV-Z]{8,16}(-[0-9A-HJKMNP-TV-Z]{1,2})?$`
+- 正则（Crockford 字符类记作 `c`，见下）：
+
+  ```regex
+  ^ [A-Z]{2}        # CC：ISO 3166-1 alpha-2（2 位大写字母，含 I/L/O/U 亦可）
+  - c{2,6}          # ORG：2–6 位 Crockford Base32
+  - c{8,16}         # UNIQUE：8–16 位 Crockford Base32
+  ( - c{1,2} )?     # CHECK：可选，1–2 位 Crockford Base32
+  $
+  ```
+
+  其中 Crockford 字符类 `c = [0-9A-HJKMNP-TV-Z]`，即 `0-9` + `A-Z` 去掉 `I L O U`：
+
+  | 范围 | 包含 | 说明 |
+  |------|------|------|
+  | `0-9` | 0 1 2 3 4 5 6 7 8 9 | 数字 |
+  | `A-H` | A B C D E F G H | 到 H 为止（排除 I，易混 1） |
+  | `J K` | J K | 跳过 I、L（易混 1） |
+  | `M N` | M N | — |
+  | `P-T` | P Q R S T | 跳过 O（易混 0） |
+  | `V-Z` | V W X Y Z | 跳过 U（易混 V / 避免歧义） |
 
 ---
 
@@ -142,7 +161,7 @@ char compute_check(const char *sn_without_check) {
 > 可为 0（无校验）、1（Damm32 / Luhn mod 32）或 2（Mod 97）。
 >
 > **兜底方案（Phase 2 先用）**：若 32×32 Damm 表尚未就绪，可选：
-> - **Mod 97**（字母数字，IBAN 思路）→ **2 位**校验（`CHECK` 长度 2）；
+> - **Mod 97**（字母数字，IBAN 思路）→ **2 位**校验（`CHECK` 长度 2）；输出固定为**两位十进制数字**（`00`–`96`），是 Crockford Base32 字符集的**子集**（例：`…-42`，不是字母）
 > - **Luhn mod 32**（N=32，Crockford Base32）→ **1 位**校验（`CHECK` 长度 1）。
 >
 > 两者实现简单、验证充分；最终算法与 `CHECK` 长度在 Phase 2 定稿并固化（同一部署内保持一致）。
@@ -383,7 +402,8 @@ Step 2: 生成密钥对
 
 Step 3: 绑定
   - 读取 SE 72-bit 唯一序列号
-  - 组装记录: {sn, pubkey, se_sn}
+  - 读取/导出 HMAC 密钥（Slot 5）—— server 验 HS256 需**同一密钥**，必须一并登记
+  - 组装记录: {sn, pubkey, hmac_key, se_sn}
   - 上传 server 密钥库
 
 Step 4: Lock
@@ -444,12 +464,12 @@ Step 5: CH32 烧录
 > **定制 / 协作式 AP 固件**（本项目的 TH-RJ45 等为可定制载体）。若承载链路无法抓 probe，
 > 则退化为「短关联 + 已签上报」（§7.2）一条路径。
 
-- client（STA）周期性发送 Probe Request
+- client（STA 模式）周期性发送 Probe Request
 - SSID 字段：**仅放短码**，格式 `ORPAHID_<CC><ORG><UNIQUE前6位>`
   - 例：`ORPAHID_CNWH019AF3C1`（≤ 32 字符）
   - **短码为不透明前缀**：router/server **不从中解析 CC/ORG/UNIQUE 字段**（ORG 变长，解析会有歧义），只当整体字符串用
 - **不放完整 SN、不放签名**（SSID 长度限制 + 管理帧不适合承载签名）
-- router（AP）收到后记录：`源 MAC + SSID短码 + RSSI + 时间戳`
+- router 收到后记录：`源 MAC + SSID短码 + RSSI + 时间戳`
 - 用途：**粗覆盖判定**，不作为身份确证
 
 ### 7.2 上报阶段（签名）
@@ -546,12 +566,18 @@ POST /orpah-id/v1/keys/register
 {
   "sn": "CN-WH01-9AF3C1D28E44",
   "pubkey": "base64(DER)",
+  "hmac_key": "base64(32B)",
   "se_sn": "ATECC608B-72BIT-SERIAL",
   "model": "CH32V203C8T6+T-Halow+ATECC608B",
   "firmware": "1.0.3",
   "issued_at": 1757420000
 }
 ```
+
+> **HMAC 密钥必须注册**：`HS256`（降级 L1/L2）是**对称验签**，server 必须持有与终端相同的
+> `hmac_key`（L1 存于 SE Slot 5；L2 存于 CH32 保护区）。若产线**只登记 `pubkey`**，降级后
+> server 无对称密钥可用 → 所有 HS256 上报会被拒。若不便于在注册接口携带密钥，可另提供
+> `POST /orpah-id/v1/keys/hmac` 导入接口，或由产线工装经安全信道单独导入。
 
 ### 9.2 上报接收
 
@@ -620,7 +646,10 @@ def verify_report(report):
     if hdr["alg"] == "ES256":
         ok = ecdsa_verify(key_record.pubkey, sha256(preimage), base64url_decode(sig))
     else:  # HS256（直接对 preimage 做 HMAC）
-        expected = hmac_sha256(keystore.get_hmac_key(payload["sn"]), preimage)
+        hk = keystore.get_hmac_key(payload["sn"])
+        if not hk:
+            reject("no_hmac_key")   # 降级需对称密钥；未注册则拒（见 §9.1）
+        expected = hmac_sha256(hk, preimage)
         ok = constant_time_eq(expected, base64url_decode(sig))
 
     if not ok:
@@ -775,3 +804,4 @@ int damm32_verify(const char *input) {
 | 1.5 | 2026-09-11 | 协议正式命名为 **Orpah ID**（*Orpah Identity*），文档标题改为《Orpah ID 协议规范》；同步更新线上取值：`hdr.typ` 由 `orpah-report` 改为 `orpah-id-report`，SSID 短码前缀由 `ORPAH_` 改为 `ORPAHID_`，API 路径前缀由 `/orpah/` 改为 `/orpah-id/`；内部代号与文档名统一，无功能变更 |
 | 1.6 | 2026-09-11 | 版本号统一（标题与修订记录对齐至 1.6） |
 | 1.7 | 2026-09-11 | 本轮修订：① CHECK 字符集改为 Crockford Base32、长度放宽为 0/1/2 位；② 字符集 Base36→**Crockford Base32**（Damm 32 / Luhn mod 32）；③ 精确化**签名预像**定义（`JCS({"hdr":…,"payload":…})`）与 HMAC 预像；④ L3 无签名改用 `alg=none`（仅 `level=3` 接受，视为不可信）；⑤ 新增 §5.7 定位数据源（client 观测 vs router 观测 `xport`）、§5.8 限频；⑥ §5.5 补充无 RTC 与校时；⑦ §6 标注参考实现（非规范性）；§7.1 补“需定制 AP 抓 probe”实现前提与短码不透明；⑧ 地外内容移至《Orpah ID 地外篇》 |
+| 1.8 | 2026-09-11 | 审计修正：① **§9.1 注册接口补 `hmac_key`**（降级 HS256 需对称密钥，否则降级后全部拒报），§6.2 Step 3 记录含 hmac_key，§9.3 无密钥时 `reject(no_hmac_key)`；② §3.2 明确 Mod 97 输出为**两位十进制**（Crockford 子集）并修正示例；③ §2.5 正则拆行注释 + Crockford 字符类映射表；④ §1.3 补 STA/AP 别名、§7.1 去除重复括号；⑤ 地外篇版本对齐 v1.8 |
