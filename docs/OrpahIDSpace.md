@@ -1,6 +1,6 @@
 # Orpah ID 地外篇（Celestial / Off-Earth Extension）
 
-- 状态：**v1.11**（2026-09-11，与主规范《Orpah ID 协议规范》保持同一版本号）
+- 状态：**v1.12**（2026-09-11，与主规范《Orpah ID 协议规范》保持同一版本号）
 - 关联：本文件是《[Orpah ID 协议规范](OrpahIDProtocol.md)》的**发散/愿景延伸**，
   描述把 Orpah ID 用于**地球之外**（月球、火星、深空基地）时的码号、地名与链路参考。
 - **非规范性**：本文件内容为资料性/愿景性，不构成协议要求、部署承诺或兼容性判定依据。
@@ -35,7 +35,7 @@
 > **注**：月球 IAU 命名要求地貌名用拉丁文，着陆点通常用 `Statio` 后缀（嫦娥五号着陆点 IAU
 > 正式名为 **Statio Tianchuan**，见 [USGS WGPSN Feature 15994](https://planetarynames.wr.usgs.gov/Feature/15994)）。
 > 本表坐标基准为 **IAU 月心坐标系**（纬度向北为正、经度向东为正，统一以 **0–360°E** 表示，不用 W）。
-> 本表以正式名为主，俗名括注。
+> 本表使用 IAU 正式名，括注为任务标识（如嫦娥五号），非俗名。
 
 ### 2.1 火星地名（摘录）
 
@@ -55,7 +55,7 @@
 | Mare Imbrium | 月海 | 34.7°N, 345.1°E |
 | Tycho Crater | 撞击坑 | 43.3°S, 348.8°E |
 | Copernicus Crater | 撞击坑 | 9.7°N, 340.0°E |
-| Statio Tianchuan（嫦娥五号，俗名 Chang'e 5） | 着陆点 | 43.06°N, 308.08°E |
+| Statio Tianchuan（嫦娥五号着陆点） | 着陆点 | 43.06°N, 308.08°E |
 
 ---
 
@@ -102,3 +102,4 @@ L_allow = P_tx - S_rx - M
 | 1.9 | 2026-09-11 | 天体码改**三字母**（避免与 ISO 4217/ISIN 已占用的 XA/XB/XC 冲突）；示例/ORG 无语义化；Apollo 11 改用 IAU 正式名 `Tranquillitatis Statio`（俗名括注） |
 | 1.10 | 2026-09-11 | 坐标基准注明 IAU 月心坐标系；月球着陆点示例改用**嫦娥五号**（IAU 正式名 `Statio Tianchuan`，坐标 43.06°N, 51.92°W） |
 | 1.11 | 2026-09-11 | 经度基准统一为 **0–360°E**（W→E，与 §2 向东为正一致）；Statio Tianchuan 补 USGS WGPSN Feature 15994 引用（已核实） |
+| 1.12 | 2026-09-11 | 删除“俗名 Chang'e 5”矛盾表述（USGS 已确认 Statio Tianchuan 为 IAU 正式名）；括注改为任务标识 |

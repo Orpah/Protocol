@@ -1,4 +1,4 @@
-# Orpah ID 协议规范 v1.11
+# Orpah ID 协议规范 v1.12
 
 > **Orpah ID**（*Orpah Identity*）是一个"无认证 Wi-Fi 寻人"协议：client（佩戴终端）向周围的 router（接入点）发送身份/位置信号，router 不要求 client 认证即可转发到 server，server 根据多个 router 的接收情况判定 client 大致位置。本协议即 *Orpah ID Protocol*。
 >
@@ -812,3 +812,4 @@ int damm32_verify(const char *input) {
 | 1.9 | 2026-09-11 | 二审修正：① 附录 B.2 `char_to_index` 改用 Crockford 字母表反查（原 `c-'A'+10` 忽略 I/L/O/U 致索引错位）；② 附录 B.2 标注“Phase 2 定稿前为示意骨架”；③ 地外篇天体码改用**三字母**（XAA/XBB/XCC），并更正 Apollo 11 为 `Tranquillitatis Statio` 俗名注记 |
 | 1.10 | 2026-09-11 | 三审修正：① §3.2 `compute_check` 注释明确传入 `CC-ORG-UNIQUE`（不含 CHECK）；② §9.3 验签伪代码增加 `ts=0` 分支（跳过时间窗口、仅靠 nonce 防重放，呼应 §5.5）；③ 地外篇坐标基准注明 IAU 月心坐标系、月球示例改用嫦娥五号 `Statio Tianchuan` |
 | 1.11 | 2026-09-11 | 四审修正：修订历史 v1.1/v1.4 补过期注记（900MHz 附录已移至地外篇 §3；产线记录字段 v1.8 起含 hmac_key）；地外篇经度统一 0–360°E、嫦娥五号补 USGS 引用 |
+| 1.12 | 2026-09-11 | 同步地外篇 v1.12（§2.2 删除“俗名 Chang'e 5”矛盾表述，括注改为任务标识） |
