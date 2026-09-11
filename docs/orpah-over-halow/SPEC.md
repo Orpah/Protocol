@@ -1,11 +1,11 @@
 # ORPAH-over-HaLow 协议规格（草稿 → L1/L2/L3 实测回填）
 
-- 状态：**v0.6**（2026-09-10）· L1/L2 已在 `halow-demo/simulator/orpah` 实现并验收
+- 状态：**v0.7**（2026-09-12）· L1/L2 已在 `halow-demo/simulator/orpah` 实现并验收
   （`demo_l1.py` / `demo_l2.py` PASS）；**L3（多 Router 漫游/去重 + SN 字符集）已落地**
   （`demo_l3.py` PASS，F-01/F-04/F-07 定稿）；**L3b（Router 主动拉取 LOST-TABLE）已落地**
   （`demo_l4.py` PASS，F-03 补充）；**L3c（发现走失上报 ORPAH-FOUND）已落地**（UI「发现记录」，
   见 §5/§7/§9/§10）；**SN 码号已对齐《Orpah ID 协议规范》v1.7（`CC-ORG-UNIQUE[-CHECK]`）**；
-  报文字段/走失表流程按实测回填（§5/§6/§7）。
+  报文字段/走失表流程按实测回填（§5/§6/§7）；**撤销表（CRL）分发方向已定、代码未写**（§5.1/F-10）。
 - 文档负责人：shijh（Orpah）
 - 关联：`halow-demo`（L1/L2/L3/L3b 原型与测试台，成熟后抽离）；泰芯 TX-AH / TH-RJ45（Phase1 硬件）；
   `OrpahIDProtocol.md`（SN 码号与签名层，SN 格式以其为准）
@@ -143,6 +143,30 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 - **编码**：Phase 1 用 **UDP+JSON**（已定，见 §6 选项 A）最快验证语义；免电池版再优化为
   紧凑二进制（选项 B，Phase 2）。
 
+### 5.1 未实现（已定方向，2026-09-12 定，代码未写）：撤销表（CRL）分发到 Router
+
+**现状缺口**：吊销只在 **Server** 侧生效 —— Router **不知道**某 SN 已撤销，仍会照常转发其上报，
+由 Server 拒签兜住（能兜住，但不是最小权限，也白占上行链路）。
+
+**已定方向**：与走失表 `LOST-TABLE` **完全同构**，但**语义分开**（走失表=业务数据、
+撤销表=安全数据，混在一张表里以后难拆）。下表是**拟定 schema，尚未实现**（故不并入上面的实测表）：
+
+| 方向 | 报文 | 含义 | 字段（拟定） |
+|---|---|---|---|
+| S→R | `ORPAH-CRL` | 撤销表下发/更新（变更即全量） | v,type,ts,entries:[{sn,revoked_at,reason?,gen?}],version? |
+| R→S | `ORPAH-CRL-REQ` | Router 主动拉取撤销表（启动 / 尚未同步） | v,type,ts |
+| R→S | `ORPAH-REVOKED-SEEN` | 收到已撤销设备的上报、已拒收（安全事件） | v,type,sn,ts,seq? |
+
+- **Router 行为（已定）**：命中撤销表 → **不转发**该上报 + 本地计数 + 向 Server 报一条
+  `ORPAH-REVOKED-SEEN`。「有人在用已撤销设备」本身就是安全线索 —— **静默丢弃会丢失可见性**。
+- **拉取时机**：照抄 L3b 的教训 —— 启动拉一次 + Server 变更推送；**同步过就不再按条拉**
+  （否则空表下每条 REQ-CONNECT 都拉一次 → 洪泛，L3b 实测踩过）。
+- **Server 仍是最终防线**：Router 离线/新部署未同步时，Server 收到已撤销 SN 的 REPORT 一律拒签。
+- **与本文件 §8 的开放问题无关**，别混：本条管**收/不收**（身份是否还可信），
+  「路由器侧观测不入签名」管**观测是否可信**。
+- **真机侧（不进 Phase 1）**：私钥不可导出（安全元件）、产线烧录与供应链绑定 = 硬件信任根，
+  按 `halow-demo/ROADMAP.md` §〇 范围原则**不在本 demo 范围**，仅记录。
+
 ## 6. 传输与封装（已定：选项 A，UDP+JSON）
 
 - **选项 A（Phase 1 采用，已实现）**：Client 关联 Router 的开放网络 → 经桥/网走 **IP/UDP**；
@@ -204,6 +228,13 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 - **L3c（发现走失上报，✅ 已完成 2026-09-10）**：Router 在 REQ-CONNECT **命中本地走失缓存**
   （tracked）时即上报 `ORPAH-FOUND`（**每次命中都发**，业务告警 = “某 Router 发现走失者”）；
   Server 记录/计数。UI 加「发现记录（走失命中）」feed + Router 卡「发现 N 次」。
+- **L3d（撤销表分发到 Router，📝 方向已定 2026-09-12，代码未写）**：新增 `ORPAH-CRL`(S→R 推) /
+  `ORPAH-CRL-REQ`(R→S 拉) / `ORPAH-REVOKED-SEEN`(R→S 安全事件)，与 LOST-TABLE 同构；
+  Router 命中撤销表 → 不转发 + 计数 + 上报安全事件（详见 §5.1 / F-10）。
+  **当前实现状态**：吊销只在 Server 侧生效（Server 拒签兜住），Router 仍会转发。
+  实现落点：`halow-demo/simulator/orpah/{orpah_proto,server,router}.py` + 端到端脚本 `demo_l5.py`。
+- **不进 demo 范围（仅记录）**：设备侧私钥不可导出（安全元件）、产线烧录与供应链绑定 = 硬件信任根，
+  按 `halow-demo/ROADMAP.md` §〇 范围原则不实现。
 - **L2.5 / 真机最终形态（下一步）**：固件代次结论（§3）已解锁最终链路——Router=TH-RJ45 升
   **V2.4-WNB**、Client=TX-AH **V2.4-FMAC**，数据面走 host SPI / RJ45 网口（orpah host 数据口
   语义已对齐 SPI MACBUS，可平滑替换底层）。
@@ -225,6 +256,7 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 | F-09 | **跨固件互联（TX-AH↔TH-RJ45）——已由代次结论解决（2026-09-09）**：非家族不兼容，
   系 V1.6↔V2.4 代次不匹配；Router=TH-RJ45 升 V2.4-WNB、Client=TX-AH 用 V2.4-FMAC 即互通。
   真机最终形态验证列入 L2.5。 | §3/§9 | **已解决（升同代）**，L2.5 真机验证待做 |
+| F-10 | 撤销表（CRL）如何下发到 Router？Router 收到已撤销设备的报怎么处理？ | §5.1 | **已定（2026-09-12，代码未写）**：新报文 `ORPAH-CRL`(S→R 推) + `ORPAH-CRL-REQ`(R→S 拉) + `ORPAH-REVOKED-SEEN`(R→S 安全事件)，与 LOST-TABLE 同构；Router 命中即**不转发 + 计数 + 上报安全事件**。私钥不可导出/安全元件/产线烧录**不在本 demo 范围**（硬件信任根） |
 
 ## 附：本文件填充路线
 
