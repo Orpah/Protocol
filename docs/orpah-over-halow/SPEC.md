@@ -1,6 +1,6 @@
 # ORPAH-over-HaLow 协议规格（草稿 → L1/L2/L3 实测回填）
 
-- 状态：**v0.7**（2026-09-12）· L1/L2 已在 `halow-demo/simulator/orpah` 实现并验收
+- 状态：**v0.7.1**（2026-09-12）· L1/L2 已在 `halow-demo/simulator/orpah` 实现并验收
   （`demo_l1.py` / `demo_l2.py` PASS）；**L3（多 Router 漫游/去重 + SN 字符集）已落地**
   （`demo_l3.py` PASS，F-01/F-04/F-07 定稿）；**L3b（Router 主动拉取 LOST-TABLE）已落地**
   （`demo_l4.py` PASS，F-03 补充）；**L3c（发现走失上报 ORPAH-FOUND）已落地**（UI「发现记录」，
@@ -125,8 +125,8 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 | C→R/S | `ORPAH-REPORT` | IMEI/序列号上报 | v,type,sn,ts,seq,rssi? |
 | S→R→C | `ORPAH-TRACKING-STATUS` | 跟踪状态回执 | v,type,sn,ts,status,msg? |
 | 任→任 | `ORPAH-ERROR` | 错误 | v,type,sn?,ts,code,msg? |
-| S→R | `ORPAH-LOST-TABLE` | 走失表下发/更新 | v,type,ts,entries:[{sn,tracked,note?}],version? |
-| R→S | `ORPAH-LOST-TABLE-REQ` | Router 主动拉取当前走失表（F-03/L3b） | v,type,ts |
+| S→R | `ORPAH-LOST-TABLE` | 走失表下发/更新 | v,type,ts,entries:[{sn,tracked,note?}],version?,**rid?**（仅应答拉表时回显） |
+| R→S | `ORPAH-LOST-TABLE-REQ` | Router 主动拉取当前走失表（F-03/L3b） | v,type,ts,**rid?**（关联号，2026-09-12 加） |
 | R→S | `ORPAH-FOUND` | Router 发现走失设备（业务告警，每次命中都发，L3c） | v,type,sn,ts |
 
 示例（REPORT）：`{"v":1,"type":"ORPAH-REPORT","sn":"CN-WH01-9AF3C1D2","ts":1788961894,"rssi":-55,"seq":1}`
@@ -166,6 +166,13 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
   `ORPAH-REVOKED-SEEN`。「有人在用已撤销设备」本身就是安全线索 —— **静默丢弃会丢失可见性**。
 - **拉取时机**：照抄 L3b 的教训 —— 启动拉一次 + Server 变更推送；**同步过就不再按条拉**
   （否则空表下每条 REQ-CONNECT 都拉一次 → 洪泛，L3b 实测踩过）。
+- **拉表关联号 `rid`（v0.7.1 新增，2026-09-12）**：Router 发 `ORPAH-LOST-TABLE-REQ` 时带一个
+  随机 token，**Server 的应答原样回显**；**Server 主动推送不带 `rid`**。
+  为什么需要它：两种下发对 Router 是**不同事件**（“我拉表的应答”不算“收到 Server 下发”，
+  主动推送才算 —— 两端卡片上的「发布 N 次」↔「收到 N 次」要能对上）。
+  旧实现靠“发出 REQ 后 ≤1.5s 内收到的表算应答”的**时间窗猜测**：推送恰好落在窗口内会被误算成
+  应答（少计 1 次），反之也会多计 —— 改用 `rid` 后是确定配对（`repo` 内固定用法：
+  `orpah_proto.new_rid()`）。“rid 不匹配”（过期的/别台的应答）按推送计。
 - **Server 仍是最终防线**：Router 离线/新部署未同步时，Server 收到已撤销 SN 的 REPORT 一律拒签。
 - **与本文件 §8 的开放问题无关**，别混：本条管**收/不收**（身份是否还可信），
   「路由器侧观测不入签名」管**观测是否可信**。
@@ -226,10 +233,11 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 - **L3（多 Router 选路/去重 + SN 字符集，✅ 已完成 2026-09-10）**：漫游式双 Router
   （2×AP+2×Router 共用 1 Server）验证 F-04/F-07（(sn,seq) 去重/最新 Router/回执归属）
   + F-01（SN 码号校验）；`demo_l3.py` 7 项检查全 PASS。
-- **L3b（Router 主动拉表，✅ 已完成 2026-09-10）**：新增 `ORPAH-LOST-TABLE-REQ`；Router
+- **L3b（Router 主动拉表，✅ 已完成 2026-09-10，v0.7.1 补 rid）**：新增 `ORPAH-LOST-TABLE-REQ`；Router
   启动即拉、未同步（重启后）时首个 REQ-CONNECT 再拉一次（避免每条 REQ 都拉），Server 记入
-  见过集并回全量表；`demo_l4.py` 4 项检查全 PASS。UI「走失表」卡片加「服务器发布记录」显示
-  LOST-TABLE 下发（mark/untrack 发布；逐条 TRACKING-STATUS 回执属响应、不计不展示）。
+  见过集并回全量表；`demo_l4.py` 4 项检查全 PASS（v0.7.1 加 6 项 `rid` 关联号检查 → 共 10 项）。UI
+  「走失表」卡片加「服务器发布记录」显示 LOST-TABLE 下发（mark/untrack 发布；逐条 TRACKING-STATUS
+  回执属响应、不计不展示）。
 - **L3c（发现走失上报，✅ 已完成 2026-09-10）**：Router 在 REQ-CONNECT **命中本地走失缓存**
   （tracked）时即上报 `ORPAH-FOUND`（**每次命中都发**，业务告警 = “某 Router 发现走失者”）；
   Server 记录/计数。UI 加「发现记录（走失命中）」feed + Router 卡「发现 N 次」。
