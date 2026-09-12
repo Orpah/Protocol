@@ -1,11 +1,11 @@
 # ORPAH-over-HaLow 协议规格（草稿 → L1/L2/L3 实测回填）
 
-- 状态：**v0.7.1**（2026-09-12）· L1/L2 已在 `halow-demo/simulator/orpah` 实现并验收
+- 状态：**v0.7.2**（2026-09-13）· L1/L2 已在 `halow-demo/simulator/orpah` 实现并验收
   （`demo_l1.py` / `demo_l2.py` PASS）；**L3（多 Router 漫游/去重 + SN 字符集）已落地**
   （`demo_l3.py` PASS，F-01/F-04/F-07 定稿）；**L3b（Router 主动拉取 LOST-TABLE）已落地**
   （`demo_l4.py` PASS，F-03 补充）；**L3c（发现走失上报 ORPAH-FOUND）已落地**（UI「发现记录」，
   见 §5/§7/§9/§10）；**SN 码号已对齐《Orpah ID 协议规范》v1.7（`CC-ORG-UNIQUE[-CHECK]`）**；
-  报文字段/走失表流程按实测回填（§5/§6/§7）；**撤销表（CRL）分发方向已定、代码未写**（§5.1/F-10）。
+  报文字段/走失表流程按实测回填（§5/§6/§7）；**能力位 `cap`（设备自报有无 RTC）已加**（§5，2026-09-13）；**撤销表（CRL）分发方向已定、代码未写**（§5.1/F-10）。
 - 文档负责人：shijh（Orpah）
 - 关联：`halow-demo`（L1/L2/L3/L3b 原型与测试台，成熟后抽离）；泰芯 TX-AH / TH-RJ45（Phase1 硬件）；
   `OrpahIDProtocol.md`（SN 码号与签名层，SN 格式以其为准）
@@ -122,7 +122,7 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 |---|---|---|---|
 | C→R | `ORPAH-REQ-CONNECT` | 请求连接（无认证） | v,type,sn,ts,mac?,hw? |
 | R→C | `ORPAH-ACCESS-INFO` | 路由器访问信息 | v,type,sn,ts,tracked,server_ok,status? |
-| C→R/S | `ORPAH-REPORT` | IMEI/序列号上报 | v,type,sn,ts,seq,rssi? |
+| C→R/S | `ORPAH-REPORT` | IMEI/序列号上报 | v,type,sn,ts,seq,rssi?,**cap?** |
 | S→R→C | `ORPAH-TRACKING-STATUS` | 跟踪状态回执 | v,type,sn,ts,status,msg? |
 | 任→任 | `ORPAH-ERROR` | 错误 | v,type,sn?,ts,code,msg? |
 | S→R | `ORPAH-LOST-TABLE` | 走失表下发/更新 | v,type,ts,entries:[{sn,tracked,note?}],version?,**rid?**（仅应答拉表时回显） |
@@ -147,6 +147,19 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
   实现方必须把该上报的**记录时间取服务器接收时刻**，并在审计里标出时间来源（`ts_src=server`）；
   设备流与路由器侧观测序列必须用**同一个时刻**，否则依赖时间对齐的定位/回放会匹配不上。
   **不得改写报文里的 `ts`**（它在签名预像里，改了验签不过）。
+- **能力位 `cap`（v0.7.2 新增，2026-09-13）**：设备**自报能力**，目前只定义一个字段：
+  `cap = {"rtc": true|false}`（JSON 对象，**不用位图**，加能力不用改协议字位）。
+  - **三态必须区分**：`true`=**有** RTC / `false`=**无** RTC / **缺省=未声明**（旧设备/旧固件）。
+    **未声明 ≠ 无 RTC**：前者按“不一定准”处理（沿用上面那条对 `ts` 的判断），后者按下面的策略处理。
+  - **必须进签名预像**：`cap` 放在**已签** ID 报告的 `payload` 内 → 篡改即验签失败。
+    否则攻击者可把 `rtc:true` 改成 `false`（**降级攻击**：把“时钟异常”伪装成“本来就没时钟”）
+    而不被发现。业务报文 `ORPAH-REPORT` **未签名**（Phase 1），其 `cap` 只能当**提示**（选时间口径），
+    **不得**用于安全判定/告警。
+  - **服务端策略**：声明 `rtc=false` ⇒ **一律**用服务器接收时刻（`ts_src=server`），
+    **即使**该条的 `ts` 看着正常（没有参考时钟的设备报的“时间”不是时间基准，它可能是上电秒数）；
+    并且**不得**把它的 `ts` 喂给时钟偏移/漂移估计（那会估出常数/噪声）。
+  - **SHOULD：不一致检测**：声明 `rtc=true` 却送出不可用 `ts` ⇒ 设备故障/被动手脚 → 报运维告警；
+    反向（`rtc=false` + `ts=0`）是**正常**（免电池终端的预期行为），**不得**告警。
 
 ### 5.1 未实现（已定方向，2026-09-12 定，代码未写）：撤销表（CRL）分发到 Router
 
