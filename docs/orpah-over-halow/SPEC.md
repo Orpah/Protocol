@@ -1,13 +1,17 @@
 # ORPAH-over-HaLow 协议规格（草稿 → L1/L2/L3 实测回填）
 
-- 状态：**v0.7.3**（2026-09-13）· L1/L2 已在 `halow-demo/simulator/orpah` 实现并验收
+- 状态：**v0.7.4**（2026-09-13）· L1/L2 已在 `orpah-over-halow` 实现并验收
   （`demo_l1.py` / `demo_l2.py` PASS）；**L3（多 Router 漫游/去重 + SN 字符集）已落地**
   （`demo_l3.py` PASS，F-01/F-04/F-07 定稿）；**L3b（Router 主动拉取 LOST-TABLE）已落地**
   （`demo_l4.py` PASS，F-03 补充）；**L3c（发现走失上报 ORPAH-FOUND）已落地**（UI「发现记录」，
   见 §5/§7/§9/§10）；**SN 码号已对齐《Orpah ID 协议规范》v1.7（`CC-ORG-UNIQUE[-CHECK]`）**；
-  报文字段/走失表流程按实测回填（§5/§6/§7）；**能力位 `cap`（设备自报有无 RTC）已加**（§5，2026-09-13）；**能量轴（免电池客户端的电量语义：降级可见 / 下限 L1 / 沉默归因分叉）已定并实现**（§5.2，2026-09-13，参数为演示标定值）；**撤销表（CRL）分发方向已定、代码未写**（§5.1/F-10）。
+  报文字段/走失表流程按实测回填（§5/§6/§7）；**能力位 `cap`（设备自报有无 RTC）已加**（§5，2026-09-13）；**能量轴（免电池客户端的电量语义：降级可见 / 下限 L1 / 沉默归因分叉）已定并实现**（§5.2，2026-09-13，参数为演示标定值）；**撤销表（CRL）分发方向已定、代码未写**（§5.1/F-10）；
+  **2026-09-12：业务侧从 `halow-demo/simulator/orpah/` 整体迁到独立仓库 `orpah-over-halow`**
+  （`git subtree split` 保留历史；本规格里的实现路径随之更新。`halow-demo` 保留空口/设备侧，
+  两者通过 host 数据口（TCP，SPI MACBUS 语义）相接）。
 - 文档负责人：shijh（Orpah）
-- 关联：`halow-demo`（L1/L2/L3/L3b 原型与测试台，成熟后抽离）；泰芯 TX-AH / TH-RJ45（Phase1 硬件）；
+- 关联：`orpah-over-halow`（L1/L2/L3/L3b 业务原型与测试台；2026-09-12 从 halow-demo 迁出）；
+  `halow-demo`（空口/设备侧权威源，长距与真机链路）；泰芯 TX-AH / TH-RJ45（Phase1 硬件）；
   `OrpahIDProtocol.md`（SN 码号与签名层，SN 格式以其为准）
 - 本文件是「可实现的 ORPAH-over-HaLow」规格：L0 骨架已按 L1/L2/L3 实测填充为可实现的
   报文定义（JSON + UDP 传输）；仍待决点见 §10 开放问题。
@@ -65,7 +69,7 @@
      → 早期“TH-RJ45(v1.6.4.3) 连不上 TX-AH(v2.4.1.5)”纯系代次不匹配，**升同代（V2.4）即解**；
      WNB 固件必须配 RJ45 PHY 载板（TX-AH 载体烧 WNB 会 boot 循环），FMAC 才对 TX-AH 载体。
 - 结论：数据面与“控制面 AT”解耦；协议实现主要跑在 **host/网桥之上**，802.11ah 仅提供 RF 数据通道。
-  **Phase-1 在纯 PC 模拟器上开发验证协议逻辑**（`halow-demo/simulator/orpah`，零硬件）；
+  **Phase-1 在纯 PC 模拟器上开发验证协议逻辑**（`orpah-over-halow`，零硬件）；
   真机最终形态链路 = Router 用 TH-RJ45（升 **V2.4-WNB**）+ Client 用 TX-AH（**V2.4-FMAC**）
   即可互通（不再依赖“同族 TH↔TH”限制，见 §9/F-09）。
 
@@ -97,7 +101,7 @@ sequenceDiagram
 **待补充（非 L3 阻塞）**：触发/重试策略、RSSI/时间上报的具体语义细化（见 §10）。
 多 Router 去重/最新位置与漫游式选路已在 **L3** 定稿（见 §7、F-04/F-07）。
 
-**L2 实测落地（2026-09-10，`halow-demo/simulator/orpah`）**：本时序已端到端跑通
+**L2 实测落地（2026-09-10，`orpah-over-halow`）**：本时序已端到端跑通
 （`demo_l2.py`）：REQ-CONNECT → Router 查本地走失缓存回 ACCESS-INFO → REPORT →
 Server 查权威走失库回 TRACKING-STATUS（经 Router 空口下行回 Client）；Server 走失库
 变更（mark/untrack）→ 下发 LOST-TABLE → Router 更新缓存，下一周期 ACCESS-INFO.tracked
@@ -198,7 +202,7 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 - **与本文件 §8 的开放问题无关**，别混：本条管**收/不收**（身份是否还可信），
   「路由器侧观测不入签名」管**观测是否可信**。
 - **真机侧（不进 Phase 1）**：私钥不可导出（安全元件）、产线烧录与供应链绑定 = 硬件信任根，
-  按 `halow-demo/ROADMAP.md` §〇 范围原则**不在本 demo 范围**，仅记录。
+  按 `orpah-over-halow/ROADMAP.md` §〇 范围原则**不在本 demo 范围**，仅记录。
 
 ### 5.2 能量轴（免电池客户端的电量语义，v0.7.3 新增 2026-09-13）
 
@@ -235,7 +239,7 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 
 **非规范（实现选择，可变）**：具体“采集→间隔→级别”的映射用三参数储能模型
 （采集 P mW / 储能 C mJ / 每次上报代价 cost mJ）实现于
-`halow-demo/simulator/orpah/energy.py`；其中的参数是**演示标定值、不是实测值**
+`orpah-over-halow/energy.py`；其中的参数是**演示标定值、不是实测值**
 （真机标定见 F-11）。规范只要求上面的 E1/E2/E3 成立，**不**规定 P/C/cost 的数值。
 
 ## 6. 传输与封装（已定：选项 A，UDP+JSON）
@@ -282,9 +286,9 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 - **走失者位置隐私**：谁有权查询、数据保留期限、最小化（F-06）。
 - 传输是否加密（UDP 明文 vs 后续加密）→ 与 §6 一并定。
 
-## 9. 实现计划与进度（L1/L2 放 `halow-demo`，成熟后抽离 `orpah-demo`）
+## 9. 实现计划与进度（业务在 `orpah-over-halow`；空口/设备在 `halow-demo`）
 
-- **L1 数据通路最小骨架（✅ 已完成，`halow-demo/simulator/orpah`）**：纯 PC 模拟器内建
+- **L1 数据通路最小骨架（✅ 已完成，`orpah-over-halow`）**：纯 PC 模拟器内建
   AP+STA，Client 上行 payload 到 Python Server；`demo_l1.py` PASS。零硬件即可开发验证协议。
 - **L2 全消息流（✅ 已完成 2026-09-10）**：报文集（§5 全集）+ 权威走失表 + 跟踪状态 + 双向
   下行，端到端跑通 §4 时序；`demo_l2.py` 两分支 PASS（未命中 NOT-TRACKED / mark 后 TRACKED）。
@@ -307,12 +311,12 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
   「看到有人在用已撤销设备」收益**已被 Server 兑住**（Router 照常转发 → Server 拒签 + 告警），
   只剩省上行空口一项 → demo 尺度不值这个复杂度。
   **当前实现状态**：吊销只在 Server 侧生效（Server 拒签兜住），Router 仍会转发。
-  将来落点：`halow-demo/simulator/orpah/{orpah_proto,server,router}.py` + 端到端脚本 `demo_l5.py`。
+  将来落点：`orpah-over-halow/{orpah_proto,server,router}.py` + 端到端脚本 `demo_l5.py`。
 - **不进 demo 范围（仅记录）**：设备侧私钥不可导出（安全元件）、产线烧录与供应链绑定 = 硬件信任根，
-  按 `halow-demo/ROADMAP.md` §〇 范围原则不实现。
+  按 `orpah-over-halow/ROADMAP.md` §〇 范围原则不实现。
 - **L2.6（能量轴，✅ 已完成 2026-09-13）**：免电池客户端的能量模型（采集 P / 储能 C / 每次上报
   代价 cost）+ 由能量驱动的**间隔与降级**（下限 L1）+ **「没电了」从沉默里分流出来**；
-  规范见 §5.2，实现 `halow-demo/simulator/orpah/energy.py`（+ `alerts.py` 新 kind
+  规范见 §5.2，实现 `orpah-over-halow/energy.py`（+ `alerts.py` 新 kind
   `id_energy` / `no_report_energy`、服务端成因推导），UI 「能量轴」卡片带采集→间隔扫描表。
   参数是演示标定值。**真机标定（TX-AH+CH32V203 实测）列入 L2.5 之后，见 F-11**。
 - **L2.5 / 真机最终形态（下一步）**：固件代次结论（§3）已解锁最终链路——Router=TH-RJ45 升
@@ -343,5 +347,5 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 
 1. 定 §6（传输）→ 回填 §5 报文字节定义 → 补 §4 时序细节
 2. 定 §7（走失表）与 §8（安全最小集）
-3. 按 §9 在 halow-demo 落 L1 → L2，实测回填"实测约束"章节
+3. 按 §9 在 orpah-over-halow 落 L1 → L2，实测回填"实测约束"章节
 4. 评审后拆分为正式多章节规格（overview / message / state / lost-table / server-api …）

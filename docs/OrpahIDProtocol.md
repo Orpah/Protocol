@@ -813,7 +813,7 @@ int damm32_verify(const char *input) {
 
 > **参考实现算例（黄金样本）**：`ORG-UNIQUE` = `WH01-9AF3C1D2` → CHECK = `B`，整串
 > `CN-WH01-9AF3C1D2-B` 校验通过（CC=CN，校验位只算 ORG-UNIQUE）。该算例由
-> `halow-demo/simulator/orpah/damm32.py` 的自检产生（拟群 `T[x][y] = 2·(x⊕y)`，
+> `orpah-over-halow/damm32.py` 的自检产生（拟群 `T[x][y] = 2·(x⊕y)`，
 > GF(2⁵)、`p(t)=t⁵+t+1`），可作跨实现对照基准。
 
 > 900MHz 地球/月球链路距离参考已移至《[Orpah ID 地外篇](OrpahIDSpace.md)》。
