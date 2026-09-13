@@ -1,6 +1,6 @@
 # ORPAH-over-HaLow 协议规格（草稿 → L1/L2/L3 实测回填）
 
-- 状态：**v0.7.13**（2026-09-13）· L1/L2 已在 `orpah-over-halow` 实现并验收
+- 状态：**v0.7.14**（2026-09-13）· L1/L2 已在 `orpah-over-halow` 实现并验收
   （`demo_l1.py` / `demo_l2.py` PASS）；**L3（多 Router 漫游/去重 + SN 字符集）已落地**
   （`demo_l3.py` PASS，F-01/F-04/F-07 定稿）；**L3b（Router 主动拉取 LOST-TABLE）已落地**
   （`demo_l4.py` PASS，F-03 补充）；**L3c（发现走失上报 ORPAH-FOUND）已落地**（UI「发现记录」，
@@ -54,12 +54,10 @@
   **2026-09-12：业务侧从 `halow-demo/simulator/orpah/` 整体迁到独立仓库 `orpah-over-halow`**
   （`git subtree split` 保留历史；本规格里的实现路径随之更新。`halow-demo` 保留空口/设备侧，
   两者通过 host 数据口（TCP，SPI MACBUS 语义）相接）。
-  **末次（v0.7.13）：限频（§5.8）落地 —— 服务端两条防线（per-SN + per-Router，验签之前）** ——
-  签名只能滤掉“伪造”，滤不掉“**洪水**”（每条都要走 ECDSA）。已实现 `ratelimit.py` +
-  `server._handle` 接线 + `ratelimit` 事件 + `id_ratelimit` 告警 + 页面限频卡片（刷量按钮）；
-  验收 `test_ratelimit.py`（26）+ `demo_ratelimit.py`（11，真链路）。
-  **缺口的写法不变：没做的全部列在 §8 威胁 1**（client/router 自限频未做、per-SN 可被轮换 SN 绕过、
-  FOUND 故意不限、全局被刷仍无解）—— **不写“已防住”**。
+  **末次（v0.7.14）：限频（§5.8）四行全部实现** —— Router 侧（转发按 SN / 未签名的 REQ-CONNECT 按源 MAC）
+  + Server 侧（per-SN + per-Router，验签之前）；`ratelimit` 事件分 `side`，`id_ratelimit` 告警；
+  页面分两侧显示（否则“报文死在哪一段”说不清）。**两个例外不限：ORPAH-FOUND 与命中走失表的 REQ-CONNECT**。
+  验收 `test_ratelimit.py` 34 + `demo_ratelimit.py` 16（真链路）；**缺口的写法不变：没做的全部列在 §8 威胁 1**。
 - 文档负责人：shijh（Orpah）
 - 关联：`orpah-over-halow`（L1/L2/L3/L3b 业务原型与测试台；2026-09-12 从 halow-demo 迁出）；
   `halow-demo`（空口/设备侧权威源，长距与真机链路）；泰芯 TX-AH / TH-RJ45（Phase1 硬件）；
@@ -365,25 +363,37 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
   格式 → SN 校验位（Damm32/mod97）→ 时间窗 / nonce 去重 → 吊销表 → **设备公钥验签**；
   13 种攻击（含 1 条合法对照）**真的注入空口**端到端验证（`spoof.py` 单一攻击库 +
   `demo_spoof.py` 22 项 + `test_spoof.py`），页面可逐条注入并显示「被哪道防线拒」。
-- **实现现状（限频，2026-09-13 补）**：§5.8 的实现落了**服务端那两条**
-  （`ratelimit.py` 令牌桶：**per-SN** + **per-Router**，两条都过才放行），且放在**验签之前** ——
-  限频的目的是省 ECDSA 的 CPU，不是判真假。参数属部署配置（环境变量 `ORPAH_RL_*`，
-  默认值按“正常 1 条/秒不误伤 + 演示批次 13 条不被拦”选，**不是实测标定**）。
-  被丢弃的**另记 `ratelimit` 事件**，与 `id_reject`（过了限频但验签链判不合格）**分开** ——
-  混在一起会让「被哪道防线拒」失真，并污染签名失败率告警。
-  验收：`demo_ratelimit.py`（真链路 11 项）+ `test_ratelimit.py`（26 项，含并发不超发）。
+- **实现现状（限频，2026-09-13 补）**：§5.8 的四行**全部实现**：
+  · **Router 侧（网口上行，限带宽）**：`router.RouterBridge` 两处 —— 已签/业务上报**转发按 SN 限**
+    （行 2）、未签名的 REQ-CONNECT（相当于 probe）**按源 MAC 限**（行 1）。
+    **两侧参数不同是有意的**（Router 侧更宽：转发 5 条/秒、桶 40；probe 1 条/秒、桶 5）：
+    Router 侧限的是**带宽**（空口 + Router→Server 那段），Server 侧限的是 **CPU**（ECDSA）；
+    两边都做窄，报文死在 Router，就看不出「到底哪道防线拦的」。
+    **实测踩过**：把源 MAC 一并传给转发检查 → probe 桶把 13 条连发当探针限掉（`demo_spoof` 直接 FAIL）→
+    行 2 **只按 SN**，行 1 专按源 MAC，两者各吃各的桶。
+  · **Server 侧（限 CPU）**：`ratelimit.py` 令牌桶 per-SN + per-Router，两条都过才放行，
+    位置在**验签之前**。
+  · 被丢弃的**另记 `ratelimit` 事件**（`side=server|router` 区分），与 `id_reject`
+    （过了限频但验签链判不合格）**分开** —— 混在一起会让「被哪道防线拒」失真，
+    并污染签名失败率告警。参数属部署配置（`ORPAH_RL_*` = Server 侧、`ORPAH_RLR_*` = Router 侧；
+    默认值按“正常流量不误伤”选，**不是实测标定**）。
+  · **不限频的两个例外（有意，都写在代码与页面里）**：`ORPAH-FOUND`（发现走失）永不限；
+    **命中走失表的 REQ-CONNECT 也不限** —— 那条路径会顺便产生 FOUND，限掉它等于漏报发现。
+  · 验收：`demo_ratelimit.py`（真链路 16 项，含“同一 SN 连发 200 条 → Router 侧丢 159、
+    Server 侧丢 35”的分层证据）+ `test_ratelimit.py`（34 项：桶数学/并发原子性/Router 侧两行/
+    “转发不吃 MAC 桶”/“命中走失表不限”/“默认参数零丢弃”）。
 - **缺口（如实，未做）**：
-  1. **限频只做了服务端两条** —— §5.8 表里的「client 自限频」「router 侧最小间隔+令牌桶」**未实现**；
-     即：单台 Router 上行被刷时，空口与 Router→Server 那段带宽仍会被白烧（服务端不被拖死而已）。
-  2. **per-SN 桶的 key 取自尚未验签的 `sn`** → **轮换 SN 就能绕过它**，只剩 per-Router（源地址）
-     兜底（`demo_ratelimit.py` 有现场证据：轮换 60 条时 sn 防线丢 0）。攻击者换源（换线路/换设备）
-     则两条都能绕过 —— **限频只是抬高“单点被刷”的代价，不得写成“防住了”**。
-  3. **`ORPAH-FOUND`（发现走失）故意不限频**（漏一条 = 一个人没被找到）；代价是“某台 Router
-     高频刷 FOUND”能消耗服务端资源 —— 那属于 **Router 身份/归属**问题（F-12 一类），不是限频能解的。
-  4. **全局被刷（很多源一起刷）两条防线都会到顶** → 只能靠上游/接入侧（AP/运营商）限速与告警，
+  1. **per-SN 桶的 key 取自尚未验签的 `sn`** → **轮换 SN 就能绕过它**（Router 侧与 Server 侧同病），
+     只剩 per-Router / per-源MAC 兜底（`demo_ratelimit.py` 有现场证据：轮换 60 条时 sn 防线丢 0）。
+     换源（换线路/换设备）则各条都能绕过 —— **限频只是抬高“单点被刷”的代价，不得写成“防住了”**。
+  2. **命中的 REQ-CONNECT 不限** ⇒ 刷“已知在走失表里的 SN”可以绕开 probe 那行：
+     这是为“不漏报发现”付出的代价，属 **Router/上游处置**（F-12 一类）。
+  3. **全局被刷（很多源一起刷）各条防线都会到顶** → 只能靠上游/接入侧（AP/运营商）限速与告警，
      这不在本链路可控范围内。
-  5. 演示页的轮换刷量**看不出 per-Router 拦截**：仿真空口只有几 条/秒吞吐，而 per-Router 桶补
-     20/秒 → 现场基本不丢（在页面上如实标注，不包装成演示效果）；要看拦截请跑 `demo_ratelimit.py`。
+  4. 演示页的轮换刷量**看不出 per-Router 拦截**：仿真空口只有几 条/秒吞吐，而桶补得比它快
+     （Server 侧 per-Router 20/秒）→ 现场基本不丢（页面已如实标注）；要看分层拦截请跑 `demo_ratelimit.py`。
+  5. **未经真机标定**：两个桶的默认数值都是“演示/开发配置”（按空口与经验选的），
+     真机部署要按实测流量与 CPU 预算重标（与 F-11 同一性质）。
   6. **路由器侧观测不可信** —— 见威胁 2。
 
 **威胁 2（本链路特有，F-12 开放问题）：路由器侧观测不在签名内 → 可伪造定位**
@@ -534,7 +544,7 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 | F-02 | 传输=UDP+JSON(A) vs 链路层小帧(B)？端口/长度？ | §6 | **已定 = A（UDP+JSON）**，Server 端口 19447 |
 | F-03 | 走失表如何下发/过期/撤销到 Router？ | §7 | 变更即全量下发（L2）+ 新 Router 首报追平（L3）+ **Router 主动拉取（启动/缓存未命中，L3b）**；**子集/按区域下发 = 未做且不做**（demo 尺度走失表小、全量最简单；条数上去或有「按区域下发」需求时再议） |
 | F-04 | 多 Router 上报去重 / 最新位置策略？ | §7 | **已定（2026-09-10）**：(sn,seq) 去重 + 上报来源=当前 Router（最新位置优先）+ 新 Router 首报追平（L3 落地） |
-| F-05 | 防伪造/刷位置上报（签名/限频）？ | §8 | **已定（2026-09-13 结案）**：签名层按《Orpah ID 协议规范》§5/§5.6/§8 实现 —— 防线顺序 = 格式 → SN 校验位 → 时间窗/nonce → 吊销表 → **公钥验签**；13 种攻击（含合法对照）注入空口端到端验收（`spoof.py` / `demo_spoof.py` 22 项 / `test_spoof.py`）。**限频（§5.8）已实现服务端两条**（`ratelimit.py`：per-SN + per-Router，**验签之前**；`demo_ratelimit.py` 11 项 + `test_ratelimit.py` 26 项）—— **仍存的缺口如实记在 §8 威胁 1**（client/router 自限频未做、per-SN 可被轮换 SN 绕过、FOUND 故意不限、全局被刷仍无解），**没写成“已防住”**；**路由器侧观测是另一回事**，见 F-12 |
+| F-05 | 防伪造/刷位置上报（签名/限频）？ | §8 | **已定（2026-09-13 结案）**：签名层按《Orpah ID 协议规范》§5/§5.6/§8 实现 —— 防线顺序 = 格式 → SN 校验位 → 时间窗/nonce → 吊销表 → **公钥验签**；13 种攻击（含合法对照）注入空口端到端验收（`spoof.py` / `demo_spoof.py` 22 项 / `test_spoof.py`）。**限频（§5.8）四行已全部实现**（Router 侧转发按 SN / REQ-CONNECT 按源 MAC；Server 侧 per-SN + per-Router，均在**验签/转发之前**；`demo_ratelimit.py` 16 项 + `test_ratelimit.py` 34 项）—— **仍存的缺口如实记在 §8 威胁 1**（per-SN 可被轮换 SN 绕过、命中走失表的 REQ-CONNECT 不限、全局被刷仍无解、数值未经真机标定），**没写成“已防住”**；**路由器侧观测是另一回事**，见 F-12 |
 | F-06 | 位置隐私与查询权限模型？ | §8 | **已定（2026-09-13 结案）**：**保留期限已实现**（`ORPAH_EVENT_RETENTION_DAYS` 默认 30 天 + 启动清理 + `/api/status` 暴露）；**查询权限模型按 `ROADMAP.md` §〇 明确不做**（需要「谁」时止步于审计标签 `actor`，真运营方出现前不建角色/登录）；最小化与「库本身即敏感数据」的实情见 §8 威胁 3 |
 | F-07 | Client 如何“随机选 Router”（多 AP 扫描）？ | §4/§9 | **已定（2026-09-10）**：漫游式——同 sn 上报来源随时间切换（demo_l3 双 Router 演示）；真机多 AP 扫描/按 RSSI 选路列入 L2.5 细节 |
 | F-08 | RSSI 定位：多 Router 信号→粗定位，数据模型？ | §4/§7 | **已定（2026-09-13 结案）**：数据模型 = IoTDB **两类路径**——`root.orpah.devices.<sn>`（设备自报链路值）与 `root.orpah.routers.<sid>.<sn>`（**各 Router 各自测得的强度**）——**必须分开**（同设备同时间戳在 IoTDB 是 last-write-wins，挤一条路径会互相覆盖）；站位/悬停计划 `/api/stations`，标定参数（A/n/噪声）`/api/config` 单一源；算法只有一份 `ui/static/pos.js`（多 Router 观测序列 → 加权最小二乘 + 误差椭圆 + 恒速卡尔曼），`track.html`/`replay.html` 共用。**待真机**：RSSI/功率**实测标定**（现为模型值，见 F-11）；**边界**：`xport` 不可信见 F-12 |

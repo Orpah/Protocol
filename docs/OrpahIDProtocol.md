@@ -384,13 +384,17 @@ server 用**同一 `sn` 的多条 `xport`**（来自不同 router）做粗定位
 
 限频参数属**部署配置**，本协议不规定具体数值。
 
-> **非规范性说明（参考实现，2026-09-13）**：`orpah-over-halow` 实现了**服务端那两条**
-> （`ratelimit.py`，令牌桶；per-SN + per-Router，两条都过才放行），位置放在**验签之前**
-> —— 限频的目的是省签名运算（ECDSA）的 CPU，不是判真假；被限丢弃的另记事件，**不**混记为
-> “验签被拒”。参数经环境变量给（`ORPAH_RL_*`），默认值按“正常流量不误伤”选取、**不是实测标定**。
-> **已如实记录的边界**：per-SN 的 key 取自**尚未验签**的 `sn` → 轮换 SN 即可绕过它，
-> 故必须有 per-Router 兜底；**发现走失（ORPAH-FOUND）不限频**（漏一条 = 一个人没被找到）；
-> **client / router 侧两条未实现**；多条源同时刷时两条防线都会到顶。
+> **非规范性说明（参考实现，2026-09-13）**：`orpah-over-halow` 已按本表实现**四行**：
+> **Router 侧**（`router.RouterBridge`，限**带宽**）= 已签/业务上报**转发按 SN 限** +
+> 未签名的 REQ-CONNECT（相当于 probe）**按源 MAC 限**；**Server 侧**（`ratelimit.py`，限 **CPU**）
+> = 令牌桶 per-SN + per-Router，两条都过才放行，位置在**验签之前**。
+> 两侧参数**故意不同**（Router 侧更宽）：Router 侧砍带宽、Server 侧砍 CPU；两边都做窄，
+> 报文死在 Router 就看不出“哪道防线拦的”。被丢弃的另记事件（`side=server|router`），
+> **不**混记为“验签被拒”。参数经环境变量给（`ORPAH_RL_*` = Server 侧、`ORPAH_RLR_*` = Router 侧），
+> 默认值按“正常流量不误伤”选取、**不是实测标定**。
+> **已如实记录的边界**：per-SN 的 key 取自尚未验签的 `sn` → 轮换 SN 即可绕过它，故必须有 per-Router /
+> per-源MAC 兜底；**发现走失（ORPAH-FOUND）与命中走失表的 REQ-CONNECT 都不限频**（漏一条 = 一个人没被找到），
+> 后者的代价是刷“已知走失 SN”可绕开 probe 那行（属 Router/上游处置）；多条源同时刷时各条防线都会到顶。
 > 详见 `docs/orpah-over-halow/SPEC.md` §8 威胁 1。
 
 ---
