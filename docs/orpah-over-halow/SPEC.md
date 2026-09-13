@@ -1,6 +1,6 @@
 # ORPAH-over-HaLow 协议规格（草稿 → L1/L2/L3 实测回填）
 
-- 状态：**v0.7.15**（2026-09-13）· L1/L2 已在 `orpah-over-halow` 实现并验收
+- 状态：**v0.7.17**（2026-09-13）· L1/L2 已在 `orpah-over-halow` 实现并验收
   （`demo_l1.py` / `demo_l2.py` PASS）；**L3（多 Router 漫游/去重 + SN 字符集）已落地**
   （`demo_l3.py` PASS，F-01/F-04/F-07 定稿）；**L3b（Router 主动拉取 LOST-TABLE）已落地**
   （`demo_l4.py` PASS，F-03 补充）；**L3c（发现走失上报 ORPAH-FOUND）已落地**（UI「发现记录」，
@@ -57,7 +57,7 @@
   **v0.7.14：限频（§5.8）四行全部实现** —— Router 侧（转发按 SN / 未签名的 REQ-CONNECT 按源 MAC）
   + Server 侧（per-SN + per-Router，验签之前）；`ratelimit` 事件分 `side=server|router`；
   **两个例外不限频：ORPAH-FOUND 与命中走失表的 REQ-CONNECT**（漏一条 = 一个人没被找到）。
-  验收 `test_ratelimit.py` 34 + `demo_ratelimit.py` 16（真链路：同一 SN 连发 200 条 →
+  验收 `test_ratelimit.py` 34 + `demo_ratelimit.py` 22（真链路：同一 SN 连发 200 条 →
   Router 侧丢 159 / Server 侧丢 35）；**没做的全部列在 §8 威胁 1**（轮换 SN 可绕过 per-SN、
   命中走失表的 REQ-CONNECT 不限、全局被刷无解、数值未经真机标定）。
   **末次（v0.7.16）：F-14 的 B 方案也实现了 —— 下行带 ES256 签名**（2026-09-13）。
@@ -71,10 +71,15 @@
   验收：`test_downlink.py` 44 项 + `test_router.py` 18 项 + `test_server.py` 34 项 +
   `demo_l4.py` 第 ⑨ 组（**同源套接字**（IP+端口都与 Server 相同，A 认不出）的无签名空表被丢、
   缓存一动没动；伪造签名被丢；重放被丢）。
+  **又续（v0.7.17，2026-09-13）：设备侧（客户端）自愿自限频**（§5.8 表外的补充）——
+  `ratelimit.DeviceLimiter` + `client.ClientHost._gate`（`ORPAH_SELF_*`，默认 0.6s/4 条）；
+  **它不是防线**（被改的设备不做），语义是**延后而非丢弃**，验收 `test_selflimit.py` 24 项 +
+  `demo_ratelimit.py` 第 ⑦ 组（守规矩 20 条 → 发出 4 / 延后 16、上游两侧零丢弃；
+  同节奏绕过自限频的对照 → 上游丢 16）。
 - 文档负责人：shijh（Orpah）
 - 关联：`orpah-over-halow`（L1/L2/L3/L3b 业务原型与测试台；2026-09-12 从 halow-demo 迁出）；
   `halow-demo`（空口/设备侧权威源，长距与真机链路）；泰芯 TX-AH / TH-RJ45（Phase1 硬件）；
-  `OrpahIDProtocol.md`（**《Orpah ID 协议规范》v1.19**：SN 码号、签名/验签、alg 白名单、
+  `OrpahIDProtocol.md`（**《Orpah ID 协议规范》v1.20**：SN 码号、签名/验签、alg 白名单、
   限频、四级降级、定位数据源、威胁模型 —— 这几项以其为准，本文件不复制）
 - 本文件是「可实现的 ORPAH-over-HaLow」规格：L0 骨架已按 L1/L2/L3 实测填充为可实现的
   报文定义（JSON + UDP 传输）；仍待决点见 §10 开放问题。
@@ -365,7 +370,7 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
 ## 8. 安全与隐私（威胁 + 本链路实现现状）
 
 > **规范正文不在这里**：签名算法、签名预像、`alg` 白名单、限频、四级降级、威胁模型都在
-> **《Orpah ID 协议规范》v1.19**（`docs/OrpahIDProtocol.md`）——§5 数字签名 / §5.1 签名预像 /
+> **《Orpah ID 协议规范》v1.20**（`docs/OrpahIDProtocol.md`）——§5 数字签名 / §5.1 签名预像 /
 > §5.6 alg 白名单 / §5.7 定位数据源（client 观测 vs router 观测）/ §5.8 限频 /
 > §8 降级策略 / §10 威胁模型。**本节不复制它们**，只写**本链路**（HaLow 开放空口 + Router 桥 + UDP 上行）
 > 特有的**威胁**、**本 demo 的实现现状**与**如实记录的缺口**。
@@ -410,9 +415,20 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
     默认值按“正常流量不误伤”选，**不是实测标定**）。
   · **不限频的两个例外（有意，都写在代码与页面里）**：`ORPAH-FOUND`（发现走失）永不限；
     **命中走失表的 REQ-CONNECT 也不限** —— 那条路径会顺便产生 FOUND，限掉它等于漏报发现。
-  · 验收：`demo_ratelimit.py`（真链路 16 项，含“同一 SN 连发 200 条 → Router 侧丢 159、
-    Server 侧丢 35”的分层证据）+ `test_ratelimit.py`（34 项：桶数学/并发原子性/Router 侧两行/
-    “转发不吃 MAC 桶”/“命中走失表不限”/“默认参数零丢弃”）。
+  · **设备侧（客户端）自愿自限频（2026-09-13 补，§5.8 文字外的补充）**：本链路另外实现了
+    `ratelimit.DeviceLimiter` + `client.ClientHost._gate`（三处上行接线，`ORPAH_SELF_*`，
+    默认最小间隔 0.6s / 突发 4）。**它不是一道防线**：设备对自己限频是**自愿**的，
+    一台被改过/失控的设备根本不会做（协议也要求不了）；实际好处只有三个 ——
+    ① 空口是共享介质（帧丢在 Router 之前**已经上过空口**，带宽已经花掉）、
+    ② 省电（免电池设备最紧的就是每次上报的能耗）、③ 不撞上游的桶。
+    语义是**延后（hold）而非丢弃**（丢自己的报 = 漏报），页面用「已延后」而非「丢弃」。
+    默认值按本链路真实节奏定（一个周期 3 条挤在 0.25s、然后歇 2s → 长期 1.5 条/秒），
+    因而**正常节奏零延后**且低于 Server 侧 per-SN 的 2 条/秒；**参数同为部署配置、未经真机标定**。
+  · 验收：`demo_ratelimit.py`（真链路 22 项，含“同一 SN 连发 200 条 → Router 侧丢 159、
+    Server 侧丢 35”的分层证据、以及第 ⑦ 组“守规矩 20 条 → 发出 4 / 延后 16、上游两侧零丢弃；
+    同节奏绕过自限频 → 上游丢 16”）+ `test_ratelimit.py`（34 项：桶数学/并发原子性/Router 侧两行/
+    “转发不吃 MAC 桶”/“命中走失表不限”/“默认参数零丢弃”）+ `test_selflimit.py`（24 项：
+    设备侧桶数学/延后不扣令牌/环境变量三套前缀隔离/**“真实节奏零延后”回归锁**/文案口径守卫）。
 - **缺口（如实，未做）**：
   1. **per-SN 桶的 key 取自尚未验签的 `sn`** → **轮换 SN 就能绕过它**（Router 侧与 Server 侧同病），
      只剩 per-Router / per-源MAC 兜底（`demo_ratelimit.py` 有现场证据：轮换 60 条时 sn 防线丢 0）。
