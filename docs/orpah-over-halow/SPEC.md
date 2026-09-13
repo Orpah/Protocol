@@ -310,6 +310,24 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
   缺省广播 FF*6（demo 单客户端）。
 - **选项 B（免电池/低功耗优化）**：链路层之上自定义小帧（省电省字节），依赖 host SPI 数据面
   打通；Phase 2 做。
+- **地址族：Phase 1 只做 IPv4（`AF_INET`）；IPv6 未做，且「未做」不是缺口**（2026-09-13 记录）：
+  实现里每一处 socket 都显式建 `AF_INET` —— 模拟器三处 TCP 监听（console/link/host，
+  `vendor/halow/sim.py`）、Router↔Server 的 UDP（`router.py` / `server.py`）、UI 的 HTTP
+  （`ui_server.py`）、以及 demo/测试里的 `127.0.0.1`。**这条约束有实际影响**：
+  它是「下行来源校验（威胁 4 的 A 方案）**不必考虑 IPv6 变体**」的前提 ——
+  Router 的 UDP socket 是 `AF_INET`，**IPv6 源根本到不了这个 socket**，所以“IPv6 地址写法
+  不归一化导致 A 失效”这类问题在本阶段不存在。
+  将来若要上 IPv6（Phase 2 / 真机），要一起改的地方：
+  ① 模拟器三处监听与 `host_bus` 的连接；② `server.py` 的 bind 与 `router.py` 的 socket 族；
+  ③ `router._from_server` 的地址比对 —— `gethostbyname` 只解析 A 记录，得换 `getaddrinfo`，
+     并且必须比对**归一化后的地址**（同一个 IPv6 地址有多种写法）；
+  ④ 限频的 per-Router 桶 key（现在是 IPv4 字面量/源 MAC 字符串）；
+  ⑤ demo/测试里写死的 `127.0.0.1`。
+- **绑定地址：Phase 1 全是 loopback（演示选择，不是设计上限）**：模拟器与 Server／UI 都绑
+  `127.0.0.1`（只本机可达），而 **Router 的 UDP socket 是未绑定即发（`0.0.0.0:<临时端口>`）**
+  —— 实测 `Get-NetUDPEndpoint` 可见，这也是「下行来源校验必须做」在演示里的直接体现。
+  真机部署要把 Server/UI 绑到实际网卡地址（或按需 `0.0.0.0`），并把 `server_host` 配成
+  该地址（否则 A 校验的 fail-closed 会表现为“下行全被丢”，见威胁 4）。
 - 仍待定：DHCP/静态 IP。多 Router 上行去重已在 L3 定稿（F-04，见 §7）。
 
 ## 7. 走失表 / 数据库（L2 落地流程）
@@ -527,6 +545,11 @@ F-07）；按 **(sn,seq)** 去重——重复上报（同一 Router 重发 / 另
   且 Router↔Server 若跨网段/NAT，源地址校验会失效）→ 真解是下行报文带 **HMAC/签名**
   （Router 持一把共享密钥或 Server 公钥），代价是报文格式与密钥分发要动规格。
   与「CRL 分发到 Router」（§5.1/F-10，方向已定、不做）属同一批 **Router 侧信任**问题。
+  补两条前提（§6 已记）：① 本阶段**只做 IPv4**（Router 的 UDP socket 是 `AF_INET`），
+  所以 IPv6 源到不了这条路径、A 校验不必考虑 IPv6 地址写法归一化；
+  ② 演示里 Server/模拟器绑 **loopback**，而 Router 的 UDP socket 是 `0.0.0.0:<临时端口>`（未绑定即发）——
+  真机部署必须把 Server 绑到实际网卡地址并把 `server_host` 配成该地址，否则 A 的 fail-closed
+  表现为“下行全被丢”。
 
 ## 9. 实现计划与进度（业务在 `orpah-over-halow`；空口/设备在 `halow-demo`）
 
