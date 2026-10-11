@@ -1,4 +1,4 @@
-# Orpah ID 协议规范 v1.21
+# Orpah ID 协议规范 v1.22
 
 > **Orpah ID**（*Orpah Identity*）是一个"无认证 Wi-Fi 寻人"协议：client（佩戴终端）向周围的 router（接入点）发送身份/位置信号，router 不要求 client 认证即可转发到 server，server 根据多个 router 的接收情况判定 client 大致位置。本协议即 *Orpah ID Protocol*。
 >
@@ -253,7 +253,7 @@ HS256: sig = HMAC-SHA256( symkey, preimage )
 | 级别 | 算法 | 密钥位置 | 适用场景 |
 |------|------|----------|----------|
 | **主用** | ECDSA P-256 + SHA-256 | ATECC608B Slot 0 | 生产环境 |
-| 降级 L1 | HMAC-SHA256 | ATECC608B Slot 5 | Slot 0 异常时 |
+| 降级 L1 | HMAC-SHA256 | ATECC608B Slot 4 | Slot 0 异常时 |
 | 降级 L2 | HMAC-SHA256 | CH32 软件（读保护区） | SE 完全不可用时 |
 | 降级 L3 | 无签名 | — | SE 不可用且无对称密钥 |
 
@@ -416,7 +416,17 @@ server 用**同一 `sn` 的多条 `xport`**（来自不同 router）做粗定位
 
 ## 6. 密钥管理
 
-> **非规范性说明**：本节出现的具体芯片与 Slot 划分（如 ATECC608B 的 Slot 0/5/8/9）**仅为参考实现**；协议本身**不绑定任何具体 SE 型号**。实际 Slot 用途、类型与锁定策略以**芯片数据手册**与**产线配置**为准（投产前须逐项与手册核对）。
+> **非规范性说明**：本节出现的具体芯片与 Slot 划分（如 ATECC608B 的 Slot 0/4/8/9）**仅为参考实现**；协议本身**不绑定任何具体 SE 型号**。实际 Slot 用途、类型与锁定策略以**芯片数据手册**与**产线配置**为准（投产前须逐项与手册核对）。
+>
+> ★ **参考实现取 Slot 4 放降级 HMAC 密钥**（v1.22 定稿，原写 Slot 5）—— **出处**：
+> ① **原厂 CryptoAuthLib 自己的测试夹具**（`test/api_calib/test_calib_config.c`）就是「签名/GenKey 用 slot 2、
+> **HMAC 用 slot 4**」（`{TEST_TYPE_ECC_SIGN,2}` / `{TEST_TYPE_HMAC,4}`）；
+> ② **器件配置解码**（用原厂 `Atecc608Config` 解出 16 个槽的 `SlotConfig`）显示 slot **3/4** 是
+> `KeyType = 7`（**SHA/HMAC 型**）槽；
+> ③ **已投产**：4 颗 ATECC608B **即按 slot 4 配置**并上机验过（双锁 `00/00`、
+> `SHA(HMAC_START, slot 4)` 的实发字节 = `0747040400ae47`、HS256 报文被 server 接受）——
+> 记录见 `orpah-client-demo/docs/atecc608b-se.md` §8.14 / §8.19–§8.24 / §8.28。
+> **换槽号不改协议**（本节非规范性；只要**产线**与 **server** 两侧一致即可）。
 
 ### 6.1 密钥层级
 
@@ -425,7 +435,7 @@ server 用**同一 `sn` 的多条 `xport`**（来自不同 router）做粗定位
 │            ATECC608B (SE)               │
 │  ┌───────────────────────────────────┐  │
 │  │ Slot 0: ECDSA P-256 私钥（终身） │  │
-│  │ Slot 5: HMAC-SHA256 密钥（L1）   │  │
+│  │ Slot 4: HMAC-SHA256 密钥（L1）   │  │
 │  │ Slot 8: IO Protection Key        │  │
 │  │ Slot 9: Monotonic Counter        │  │
 │  └───────────────────────────────────┘  │
@@ -433,7 +443,7 @@ server 用**同一 `sn` 的多条 `xport`**（来自不同 router）做粗定位
 └─────────────────────────────────────────┘
 ```
 
-> **关于密钥轮换**：本系统**不实施密钥轮换**。Slot 0 的 ECDSA 私钥在产线烧录后终身使用，直至设备报废或密钥被吊销（见 §6.3）。因此 ATECC608B 不需要为轮换预留多个 ECDSA Slot，其余 Slot（1、2、3、4、6、7 等）可按部署需要用于其他用途（如设备 attestation、将来扩展），协议不做规定。
+> **关于密钥轮换**：本系统**不实施密钥轮换**。Slot 0 的 ECDSA 私钥在产线烧录后终身使用，直至设备报废或密钥被吊销（见 §6.3）。因此 ATECC608B 不需要为轮换预留多个 ECDSA Slot，其余 Slot（1、2、3、6、7 等；**4 已归降级 HMAC**、8/9 见上图）可按部署需要用于其他用途（如设备 attestation、将来扩展），协议不做规定。
 
 ### 6.2 产线烧录流程
 
@@ -445,11 +455,11 @@ Step 1: 生成 SN
 
 Step 2: 生成密钥对
   - ATECC608B Slot 0: genkey → 得到 P256 公钥（终身私钥，不轮换）
-  - ATECC608B Slot 5: random → 生成 HMAC 密钥（降级用）
+  - ATECC608B Slot 4: random → 生成 HMAC 密钥（降级用）
 
 Step 3: 绑定
   - 读取 SE 72-bit 唯一序列号
-  - 读取/导出 HMAC 密钥（Slot 5）—— server 验 HS256 需**同一密钥**，必须一并登记
+  - 读取/导出 HMAC 密钥（Slot 4）—— server 验 HS256 需**同一密钥**，必须一并登记
   - 组装记录: {sn, pubkey, hmac_key, se_sn}
   - 上传 server 密钥库
 
@@ -496,7 +506,7 @@ Step 5: CH32 烧录
 
 > **关于"疑似私钥泄露"**：即便私钥可能已被破解，本系统也不靠轮换来止血（因不轮换），而是通过立即**撤销**该设备来切断其上报可信度。这足以满足寻人场景：攻击者即便能伪造报文，运维侧可通过撤销快速隔离。
 
-> **设备侧实际持有**：**1 把 ECDSA P-256 私钥**（Slot 0，终身）+ **1 把 32 字节 HMAC 密钥**（降级 HS256 用，Slot 5 / CH32 保护区）—— 共 2 份密钥材料、**一代**，不存在"第 2 代"。
+> **设备侧实际持有**：**1 把 ECDSA P-256 私钥**（Slot 0，终身）+ **1 把 32 字节 HMAC 密钥**（降级 HS256 用，Slot 4 / CH32 保护区）—— 共 2 份密钥材料、**一代**，不存在"第 2 代"。
 
 ### 6.4 私钥保护
 
@@ -580,7 +590,7 @@ Step 5: CH32 烧录
 | 级别 | 条件 | 算法 | 报文标识 | 信任度 |
 |------|------|------|----------|--------|
 | **L0** | 正常 | ECDSA P-256 | `alg=ES256, level=0` | 高 |
-| **L1** | Slot 0 签名失败 | HMAC-SHA256（Slot 5） | `alg=HS256, level=1` | 中 |
+| **L1** | Slot 0 签名失败 | HMAC-SHA256（Slot 4） | `alg=HS256, level=1` | 中 |
 | **L2** | SE 完全不可用 | HMAC-SHA256（CH32） | `alg=HS256, level=2` | 低 |
 | **L3** | 无可用密钥 | 裸上报（不签名） | `alg=none, level=3` | 极低 |
 
@@ -630,7 +640,7 @@ POST /orpah-id/v1/keys/register
 ```
 
 > **HMAC 密钥必须注册**：`HS256`（降级 L1/L2）是**对称验签**，server 必须持有与终端相同的
-> `hmac_key`（L1 存于 SE Slot 5；L2 存于 CH32 保护区）。若产线**只登记 `pubkey`**，降级后
+> `hmac_key`（L1 存于 SE Slot 4；L2 存于 CH32 保护区）。若产线**只登记 `pubkey`**，降级后
 > server 无对称密钥可用 → 所有 HS256 上报会被拒。若不便于在注册接口携带密钥，可另提供
 > `POST /orpah-id/v1/keys/hmac` 导入接口，或由产线工装经安全信道单独导入。
 
@@ -881,7 +891,7 @@ int damm32_verify(const char *input) {
 | CH32 I2C HAL | CryptoAuthLib (Microchip) | ATECC608B 驱动 |
 | JCS 规范化 | tiny_jcs 或自实现 | RFC 8785 |
 | ECDSA 验签 | cryptography (Python) / mbedTLS (C) | server / 调试 |
-| HMAC | CH32 软件或 608B Slot 5 | 降级用 |
+| HMAC | CH32 软件或 608B Slot 4 | 降级用 |
 | Damm 32 表 | 自生成 + 固化 | Phase 2 定稿 |
 
 ### 附录 D：修订记录
@@ -910,3 +920,4 @@ int damm32_verify(const char *input) {
 | 1.19 | 2026-09-13 | 十一审（**§6.3.1 不轮换的理由补全**）：新增理由 4（**本系统对使用者无强制约束力** —— 觉得不好用/不想用，抛弃客户端或**物理屏蔽（包锡纸）**即可，因此不需要靠轮换应对"疑似泄露"）与理由 5（**免电池/取能终端做不了轮换** —— 轮换是"高能耗 + 必须在线完成一次事务"，取能设备承诺不了"换钥那一刻我有电"，即能量轴的 `P=0` 情形）；新增"设备侧实际持有"说明（**1 把 ECDSA P-256 + 1 把 32 字节 HMAC，一代，不存在第 2 代**）；并明确 demo 的 `rotate/grace/retired` 是**对比用的演示代码、不是设备模型**（同时结案 SPEC F-13） |
 | 1.20 | 2026-09-13 | 十二审（**§5.8 非规范性补充，不改任何规范条款**）：在参考实现说明后加「设备侧自愿自限频」——`ratelimit.DeviceLimiter`（`ORPAH_SELF_*`，默认最小间隔 0.6s / 突发 4）。明确三点：① **它不在本表四行之内、不构成防线**（被改过或失控的设备不会做，本规范也要求不了它）；② 语义是**延后（hold）而不是丢弃**（丢自己的业务报 = **漏报**）；③ 好处只有三个（不占满共享空口、省电、不撞上游的桶），参数同为**部署配置**、未经真机标定。验收见 `orpah-over-halow` 的 `test_selflimit.py` + `demo_ratelimit.py` 第 ⑦ 组 |
 | **1.21** | 2026-10-11 | 十三审（**§3 校验位口径定稿：1 位 = Damm32（唯一）**）：① §2.1 字段表、§3.2「字符集与长度」、§3.3 能力表、§11 待验证项同步为「1 位 = Damm32、2 位 = Mod 97」；② **明确 Luhn mod 32 不再作为 SN 校验位** —— 理由是 **`CHECK` 长度区分不了两种 1 位算法**（实现只能猜或“都试”，后者把强度从 1/32 降到 2/32），**实测**按长度选算法的实现（`orpah-over-halow` 的 `verify_check`）会把 **Damm32 的 SN 全部判为不合格**，连本规范**黄金样本** `CN-WH01-9AF3C1D2-B` 也被拒；另 Luhn **只检单字错、不检相邻换位**，而 Damm 两者都检；③ **打破什么**：历史上按 Luhn mod 32 生成的 1 位校验 SN **不再合法**（需重新分配 —— 注意 §2.3 第 5 条 **SN 不可复用**）；④ **各实现必须重跑交叉测试**（`orpah-over-halow/c/run_cross_test.py`）并把 `verify_check` / `compute_check` 的 1 位分支改为 **Damm32** |
+| **1.22** | 2026-10-12 | 十四审（**参考实现槽号定稿：降级 HMAC 密钥用 ATECC608B `Slot 4`**）：① **9 处** `Slot 5` → `Slot 4` —— §5.2 算法表、§6.1 密钥层级图、§6.2 产线烧录 Step 2/3、§6.3.1「设备侧实际持有」、§8.1 四级降级表、§9.1 HMAC 注册注、附录 C 依赖库；② §6.3.1 的「其余 Slot」清单**去掉 4**（已归降级 HMAC，8/9 见 §6.1 图）；③ §6 的「非规范性说明」补**出处**：**原厂 CryptoAuthLib 自己的测试夹具**（`test/api_calib/test_calib_config.c`：签名/GenKey 用 slot 2、**HMAC 用 slot 4**）+ **器件配置解码**（原厂 `Atecc608Config` 解出 slot **3/4** = `KeyType 7`（SHA/HMAC 型））+ **已投产**（4 颗 ATECC608B 按 slot 4 配置并上机验过：双锁 `00/00`、`SHA(HMAC_START, slot 4)` 实发字节 `0747040400ae47`、HS256 报文被 server 接受 —— `orpah-client-demo/docs/atecc608b-se.md` §8.14/§8.19–§8.24/§8.28）。**打破什么：无** —— §6 自始标注**非规范性**（"实际 Slot 用途、类型与锁定策略以芯片数据手册与产线配置为准"），本次只把参考实现与**已投产口径**对齐：报文格式 / 签名预像 / JCS / `b64url` / 黄金样本 / CHECK 算法 / 四级降级语义**一律未动**，`orpah-over-halow/orpah_id.py` 仅两处注释同步。**最小验收（已跑）**：`orpah-over-halow/run_checks.py` **27/27 通过**；`orpah-client-demo/tools/run_checks.py` **5/5 通过**（含 C↔Python 交叉测试 16 组逐向量一致）。★ 本次**不改变** §6.1 图里 Slot 8/9 的**参考**用法（IO Protection Key / Monotonic Counter）—— 本参考实现**未启用**它们，投产前按 §6 原注逐项与手册核对 |
