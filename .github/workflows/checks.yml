@@ -1,0 +1,46 @@
+# 文档一致性检查（本仓**只有文档** ⇒ 这是唯一能上机器守的一类闸门）—— ★ 先读这段
+#
+# 证明 ✓：`AGENTS.md` 里那几条**机械**规则没被破坏 —— 由 `tools/check_docs.py` 守 ✓：
+#   ① §1 改规范 = 改契约：`docs/OrpahIDProtocol.md` 的**标题行版本号** == 文末**修订记录表
+#      最后一行**的版本号 ✓（这条以前只能人眼对 ✓ —— 正是"两处必须同步"最容易漏的地方 ✗）；
+#   ② §4 图文并茂：`README.md` / `README_zh.md` 各自至少嵌 1 张本地图 ✓，且 README / AGENTS /
+#      docs 里**引用的本地图片必须真的存在** ✓（重导出图、改名之后最容易留死链 ✗）；
+#   ③ §5 文本一律 **UTF-8 无 BOM** ✓。
+#   ★ 检查前会先**去掉代码块与行内 code** ✓ —— 本仓 AGENTS §4 里那个示例占位符
+#     `[![说明](docs/images/x.png)](…)` 不是真引用 ✗（第一版没去掉就误报过一次 ✓）。
+#
+# 不证明 ✗（三条）：
+#   ① **不证明规范内容对** ✗ —— 那是人的判断 ✓；这里只守"机械规则" ✓；
+#   ② **不证明 `.odg` 原图与 `docs/images/*.png` 同源** ✗（二进制 ✗、需要 LibreOffice 渲染 ✗）；
+#   ③ **不证明中英两份读起来一致** ✗ —— 只证明"两份都在、都嵌了图、都没有死链" ✓；
+#      "译得对不对"仍是 AGENTS §4 那条人工规则 ✓。
+#
+# 为什么只跑 Linux 一栏 ✗：纯文本检查，换 Windows / macOS **不会**得到新信息 ✓
+#   （本仓没有代码、没有平台相关假设 ✓）⇒ 不浪费三倍时长 ✓。
+name: checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  docs:
+    name: 文档一致性（Linux）
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: 记下这台机器的版本（日志留痕）
+        shell: pwsh
+        run: |
+          Write-Host "OS     : $($env:RUNNER_OS) $($env:ImageOS)"
+          Write-Host "python : $(python --version 2>&1)"
+
+      - name: 文档一致性检查（口径 = 退出码 0 且输出无 FAIL）
+        run: python tools/check_docs.py

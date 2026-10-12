@@ -9,7 +9,7 @@
 | `docs/OrpahIDSpace.md` | SN 空间规划 |
 | `docs/OrpahProtocol.odg`、`docs/OrpahProtocol_zh.odg` | 原图（网络结构/消息流等）；导出件在 `docs/images/` |
 
-**本仓只有文档，没有代码**（没有实现、没有测试、没有 CI）。
+**本仓只有文档 + 一个文档一致性检查脚本**（`tools/check_docs.py`；没有实现、没有测试套件）。
 
 > 详细内容见 `README.md`（英）/ `README_zh.md`（中）与 `docs/`；本文件只留「必须照着做 / 不能做」的部分。
 
@@ -81,6 +81,17 @@
   改图要**连正文一起改**，别只改图（图里多一个箭头、正文没写，就会互相打架）。
 - Markdown 在本仓**正文里可以正常用**（这是给人读的规范）；「页面/i18n 文案里不许写 Markdown」
   那条属于 UI 仓（见 `orpah-over-halow/AGENTS.md`）。
+- ★★ **文档一致性检查 = `python tools/check_docs.py`**（2026-10-12 加 ✓；本仓唯一能上机器守的闸门 ✓）：
+  **它守的正是本文件已写下的机械规则** ✓，不另立口径 ✗ ——
+  ① §1：`OrpahIDProtocol.md` 的**标题行版本号** == 文末**修订记录表最后一行**的版本号 ✓；
+  ② §4：`README.md` / `README_zh.md` 各自至少嵌 1 张本地图 ✓，且 README / AGENTS / docs 里
+     **引用的本地图片必须真的存在** ✓；③ §5：文本一律 UTF-8 无 BOM ✓。
+  ★ 口径两条：**扫描前会先去掉代码块与行内 code** ✓ —— 本文件 §4 里那个示例占位符
+  `[![说明](docs/images/x.png)](…)` 不是真引用 ✗（第一版没去掉就误报过一次 ✓）；
+  **它不判规范内容对错** ✗（那是人审 ✓），也**不查** `.odg` 与导出图是否同源 ✗（二进制 ✓）。
+  ★ CI = `.github/workflows/checks.yml`（**只跑 Linux 一栏** ✓ —— 纯文本检查，换系统没有新信息 ✗）：
+  推上去自动跑 `python tools/check_docs.py` ✓；判定 = 退出码 0 且输出无 `FAIL` ✓。
+  **它不证明** ✗：不是“规范对”，也不是“中英一致” ✓（“译得对不对”仍是人工规则 ✓）。
 
 ## 5. 许可与提交纪律
 
@@ -94,9 +105,10 @@
 
 ## 6. 现状与未做（如实）
 
-- 本仓**只有文档**：`docs/`（5 份：两份规范 + `OrpahIDSpace.md` + 两份 `.odg` 原图）、`docs/images/` **7 张图**、
-  `README.md` / `README_zh.md`、`LICENSE` / `NOTICE`。**没有代码、没有测试、没有 CI。**
-- `OrpahIDProtocol.md` = **v1.20**（修订记录逐版可查）；`SPEC.md` 标题仍写「草稿 → L1/L2/L3 实测回填」：
-  L1/L2/L3/L3b/L3c 已定稿，Phase 1 **只做 IPv4**。
+- 本仓**只有文档 + 一个检查脚本**：`docs/`（5 份：两份规范 + `OrpahIDSpace.md` + 两份 `.odg` 原图）、`docs/images/` **7 张图**、
+  `README.md` / `README_zh.md`、`LICENSE` / `NOTICE`、`tools/check_docs.py`（★ 文档一致性检查 ✓）
+  与 `.github/workflows/checks.yml`（★ 跑它 ✓）。**没有实现代码、没有测试套件。**
+- `OrpahIDProtocol.md` = **v1.22**（修订记录逐版可查 ✓；标题行与修订表最后一行是否一致**由 `tools/check_docs.py` 守** ✓）；
+  `SPEC.md` 标题仍写「草稿 → L1/L2/L3 实测回填」：L1/L2/L3/L3b/L3c 已定稿，Phase 1 **只做 IPv4**。
 - 未结项：SPEC §10 开放问题清单（F-11 真机标定数值、§6 的 DHCP/静态 IP…）、
   `OrpahIDProtocol.md` §11 Phase 2 待验证项。

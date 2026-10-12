@@ -50,6 +50,26 @@ ORPAH clients can be an APP on a mobile phone or a battery-free device.
 ### ORPAH APP
 ORPAH APP can be extended to support more functions than battery-free device, such as opening mobile phone's GPS and sending GPS data to ORPAH server.
 
+### Documentation checks (this repo holds only docs)
+
+```bash
+python tools/check_docs.py
+```
+
+It guards the three *mechanical* rules already written down in `AGENTS.md` (nothing else):
+
+1. the version in the **title line** of `docs/OrpahIDProtocol.md` equals the version of the
+   **last row** of its revision-history table (changing the spec = changing a contract, so the two
+   places must never drift);
+2. every **local image reference** in README / AGENTS / docs actually exists, and both
+   `README.md` and `README_zh.md` embed at least one image;
+3. all text files are **UTF-8 without BOM**.
+
+CI (`.github/workflows/checks.yml`, Linux only — a pure text check gains nothing from other OSes)
+just runs that script on every push. It does **not** judge whether the spec is correct, nor whether
+`docs/images/*.png` still matches the `.odg` originals, nor whether the Chinese and English
+readings agree — those remain human rules.
+
 
 ## References
 ##### Trafficking of children
