@@ -37,10 +37,11 @@ jobs:
           python-version: "3.13"
 
       - name: 记下这台机器的版本（日志留痕）
-        shell: pwsh
+        # ★ 这里**不能**用 `shell: pwsh` ✗ —— ubuntu-latest 上没有 PowerShell，
+        #   一个纯装饰的步骤就会把整个 workflow 变红，人于是学会忽略这个闸门 ✗。
         run: |
-          Write-Host "OS     : $($env:RUNNER_OS) $($env:ImageOS)"
-          Write-Host "python : $(python --version 2>&1)"
+          echo "OS     : $RUNNER_OS $ImageOS $(uname -sr)"
+          echo "python : $(python --version 2>&1)"
 
       - name: 文档一致性检查（口径 = 退出码 0 且输出无 FAIL）
         run: python tools/check_docs.py
